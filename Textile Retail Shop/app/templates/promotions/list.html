@@ -2,8 +2,12 @@
 {% block content %}
 <div class="page-head">
   <h4><i class="bi bi-gift"></i> Promotion schemes</h4>
-  <a href="{{ url_for('promotions.new_scheme') }}" class="btn btn-brand btn-sm">
-    <i class="bi bi-plus"></i> New scheme</a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('coupons.index') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-ticket-perforated"></i> Coupons</a>
+    <a href="{{ url_for('promotions.new_scheme') }}" class="btn btn-brand btn-sm">
+      <i class="bi bi-plus"></i> New scheme</a>
+  </div>
 </div>
 
 {# Status chips with live counts, the same control every other list screen

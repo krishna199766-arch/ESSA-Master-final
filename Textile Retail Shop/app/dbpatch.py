@@ -102,6 +102,17 @@ COLUMNS = [
     ("invoices", "fin_year", "VARCHAR(8)"),
     ("invoices", "bill_prefix", "VARCHAR(8)"),
     ("invoices", "bill_seq", "INTEGER"),
+    # Birthday and anniversary wishes — see the customer form.
+    ("customers", "dob", "DATE"),
+    ("customers", "anniversary", "DATE"),
+    # Bill cancellation — see app/cancellation.py. The bill is marked, not removed.
+    ("invoices", "cancelled_at", "TIMESTAMP"),
+    ("invoices", "cancelled_by_id", "INTEGER"),
+    ("invoices", "cancel_reason", "VARCHAR(256)"),
+    # The coupon's share of a bill's discount — see app/vouchers.py.
+    ("invoices", "coupon_discount", "FLOAT"),
+    # Which till raised a credit note, so a cash refund comes out of its drawer.
+    ("credit_notes", "counter_id", "INTEGER"),
 ]
 
 

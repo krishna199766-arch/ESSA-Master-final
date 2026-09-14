@@ -1,11 +1,40 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="no-print mb-3">
+<div class="no-print mb-3 d-flex flex-wrap gap-2 align-items-start">
   <a href="{{ url_for('pos.counter') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
   <button class="btn btn-brand btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+  {# Cancelling is for a bill rung up wrongly today, before anything else has hung
+     off it — app/cancellation.py says what counts. When it cannot be cancelled the
+     manager is told why, instead of the button simply not being there. #}
+  {% if current_user.is_manager and not inv.is_cancelled %}
+    {% if cancel_blocked %}
+    <span class="small text-muted ms-auto align-self-center" title="{{ cancel_blocked }}"><i class="bi bi-slash-circle"></i> Can't cancel: {{ cancel_blocked }}</span>
+    {% else %}
+    <details class="ms-auto">
+      <summary class="btn btn-outline-danger btn-sm"><i class="bi bi-x-octagon"></i> Cancel bill</summary>
+      <form method="post" action="{{ url_for('pos.cancel_invoice', iid=inv.id) }}" class="card p-3 mt-2" style="max-width:360px"
+            onsubmit="return confirm('Cancel {{ inv.invoice_number }}? Stock, loyalty points, promotions and coupons on it are all reversed. This cannot be undone.')">
+        <label class="form-label small">Reason *</label>
+        <input class="form-control form-control-sm mb-2" name="reason" required maxlength="250" placeholder="e.g. wrong item billed">
+        <div class="small text-muted mb-2">The bill number stays in the register marked cancelled.
+          Hand back what the customer paid.</div>
+        <button class="btn btn-danger btn-sm">Cancel this bill</button>
+      </form>
+    </details>
+    {% endif %}
+  {% endif %}
 </div>
 
-<div class="invoice-print card">
+<div class="invoice-print card {{ 'is-cancelled' if inv.is_cancelled }}" style="position:relative">
+  {% if inv.is_cancelled %}
+  <div class="inv-void-mark" aria-hidden="true">CANCELLED</div>
+  <div class="alert alert-danger py-2 mb-3">
+    <strong>CANCELLED</strong> on {{ inv.cancelled_at.strftime('%d %b %Y %I:%M %p') if inv.cancelled_at }}
+    {% if inv.cancelled_by %} by {{ inv.cancelled_by.full_name }}{% endif %}
+    {% if inv.cancel_reason %} — {{ inv.cancel_reason }}{% endif %}.
+    This bill is not a sale and is left out of every total.
+  </div>
+  {% endif %}
   <div class="invoice-header d-flex justify-content-between">
     <div>
       {# The entity that RAISED this bill, not the shop's config. Two companies
@@ -69,25 +98,27 @@
       {% endif %}
     </div>
     <div class="col-6 text-end">
-      <strong>Payment:</strong> {{ inv.payment_method|upper }}<br>
+      <strong>Payment:</strong> {{ (inv.payment_method or '')|replace('_', ' ')|upper }}<br>
       {# A split bill has to print its split — "MIXED" alone tells the customer
          nothing about what came off their card, and tells a query nothing at
          all. Invoices raised before settlements were recorded have no rows and
          simply show the single method above. #}
       {% if inv.payments %}
         {% for p in inv.payments %}
-          <span class="small">{{ p.method|upper }} {{ p.amount|inr }}{% if p.reference %}
+          <span class="small">{{ p.method|replace('_', ' ')|upper }} {{ p.amount|inr }}{% if p.reference %}
             · {{ p.reference }}{% endif %}</span><br>
         {% endfor %}
         {% if inv.change_given %}
           <span class="small">Change {{ inv.change_given|inr }}</span><br>
         {% endif %}
       {% endif %}
-      <strong>Status:</strong> <span class="badge bg-success">{{ inv.payment_status }}</span><br>
+      <strong>Status:</strong> <span class="badge {{ 'bg-danger' if inv.is_cancelled else 'bg-success' }}">{{ inv.payment_status }}</span><br>
       {# Paid and collected are two different questions, and a bill that answers
          only the first is how goods sit behind a counter unnoticed. #}
       <strong>Goods:</strong>
-      {% if inv.delivery_status == 'delivered' %}
+      {% if inv.is_cancelled %}
+        <span class="badge bg-secondary">back in stock</span>
+      {% elif inv.delivery_status == 'delivered' %}
         <span class="badge bg-success">collected</span>
       {% elif inv.delivery_status == 'part' %}
         <span class="badge bg-warning text-dark">{{ inv.pending_qty }} still to collect</span>
@@ -135,7 +166,11 @@
     <div class="col-md-5">
       <table class="table table-sm">
         <tr><td>Subtotal (taxable)</td><td class="text-end">{{ inv.subtotal|inr }}</td></tr>
-        {% if inv.discount %}<tr><td>Discount</td><td class="text-end">- {{ inv.discount|inr }}</td></tr>{% endif %}
+        {# A coupon is part of `discount` — it came off before tax, like any other
+           discount — but the bill names it, so the customer sees their code was taken. #}
+        {% set coupon_off = inv.coupon_discount or 0 %}
+        {% if inv.discount and inv.discount - coupon_off > 0.005 %}<tr><td>Discount</td><td class="text-end">- {{ (inv.discount - coupon_off)|inr }}</td></tr>{% endif %}
+        {% if coupon_off %}<tr><td>Coupon{% for r in inv.coupon_redemptions %} <code>{{ r.coupon.code }}</code>{% endfor %}</td><td class="text-end">- {{ coupon_off|inr }}</td></tr>{% endif %}
         {% if inv.is_interstate %}
           <tr><td>IGST</td><td class="text-end">{{ inv.igst|inr }}</td></tr>
         {% else %}
@@ -156,11 +191,63 @@
           {% endfor %}
         </td></tr>
         {% endif %}
-        {% if inv.loyalty_earned %}<tr><td colspan="2" class="text-success small">You earned {{ inv.loyalty_earned }} loyalty points.</td></tr>{% endif %}
+        {% if inv.loyalty_earned and not inv.is_cancelled %}<tr><td colspan="2" class="text-success small">You earned {{ inv.loyalty_earned }} loyalty points.</td></tr>{% endif %}
       </table>
     </div>
   </div>
 
-  <p class="text-muted small text-center mt-4">Thank you for shopping with us! Goods once sold cannot be returned after 7 days.</p>
+  {# The coupon this bill earned, for the next visit. #}
+  {% if coupons_issued and not inv.is_cancelled %}
+  {% for cp in coupons_issued if cp.active %}
+  <div class="border border-2 rounded p-2 mb-2 d-flex justify-content-between align-items-center" style="border-style:dashed!important">
+    <div>
+      <div class="small text-muted">Your coupon for next time</div>
+      <div class="fw-bold">{{ cp.campaign.describe }}</div>
+      <div class="small">Valid {{ cp.valid_from|dmy }} to {{ cp.valid_to|dmy }}</div>
+    </div>
+    <div class="text-end"><code class="fs-5">{{ cp.code }}</code></div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <div class="d-flex justify-content-between align-items-end mt-4 gap-3">
+    <p class="text-muted small mb-0">Thank you for shopping with us! Goods once sold cannot be returned after 7 days.</p>
+    {% if feedback_link %}
+    {% set fb_qr = feedback_link | qr(scale=2) %}
+    {% if fb_qr %}
+    <div class="text-center small text-muted" style="width:92px;flex:none">
+      {{ fb_qr }}
+      <div>Rate your visit</div>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
 </div>
+
+{# Staff typing in what a customer said at the counter, against this bill. #}
+{% if not inv.is_cancelled %}
+<details class="no-print mt-3" style="max-width:520px">
+  <summary class="btn btn-outline-secondary btn-sm"><i class="bi bi-star"></i> Record feedback</summary>
+  <form method="post" action="{{ url_for('customers.feedback') }}" class="card p-3 mt-2">
+    <input type="hidden" name="invoice_id" value="{{ inv.id }}">
+    <input type="hidden" name="next" value="{{ url_for('pos.view_invoice', iid=inv.id) }}">
+    <div class="d-flex gap-2 mb-2">
+      <select class="form-select form-select-sm" name="rating" required style="max-width:160px">
+        <option value="">Rating…</option>
+        {% for r in [5,4,3,2,1] %}<option value="{{ r }}">{{ '★' * r }}</option>{% endfor %}
+      </select>
+      {% if feedback_link %}<a class="btn btn-sm btn-link ms-auto" href="{{ feedback_link }}" target="_blank" rel="noopener">Customer's link</a>{% endif %}
+    </div>
+    <textarea class="form-control form-control-sm mb-2" name="comments" rows="2" placeholder="What did they say?"></textarea>
+    <button class="btn btn-brand btn-sm align-self-start">Save</button>
+  </form>
+</details>
+{% endif %}
+
+<style>
+  .inv-void-mark { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:clamp(48px, 12vw, 120px); font-weight:800; letter-spacing:.08em; color:rgba(190,30,45,.12);
+    transform:rotate(-24deg); pointer-events:none; user-select:none; z-index:1; }
+  @media print { .inv-void-mark { color:rgba(190,30,45,.18); -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+</style>
 {% endblock %}

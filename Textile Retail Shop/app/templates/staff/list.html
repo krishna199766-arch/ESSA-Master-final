@@ -5,6 +5,7 @@
   <div>
     <a href="{{ url_for('staff.attendance') }}" class="btn btn-outline-secondary btn-sm">Attendance</a>
     <a href="{{ url_for('staff.commissions') }}" class="btn btn-outline-secondary btn-sm">Commissions</a>
+    <a href="{{ url_for('staff.advances') }}" class="btn btn-outline-secondary btn-sm">Salary advances</a>
     {% if current_user.is_admin %}<a href="{{ url_for('staff.new_staff') }}" class="btn btn-brand btn-sm">+ New</a>{% endif %}
   </div>
 </div>

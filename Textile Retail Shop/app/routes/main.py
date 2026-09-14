@@ -16,15 +16,15 @@ def dashboard():
     month_ago = today - timedelta(days=30)
 
     today_sales = db.session.query(func.coalesce(func.sum(Invoice.total), 0)).filter(
-        func.date(Invoice.invoice_date) == today
+        Invoice.live(), func.date(Invoice.invoice_date) == today
     ).scalar() or 0
 
     week_sales = db.session.query(func.coalesce(func.sum(Invoice.total), 0)).filter(
-        func.date(Invoice.invoice_date) >= week_ago
+        Invoice.live(), func.date(Invoice.invoice_date) >= week_ago
     ).scalar() or 0
 
     month_sales = db.session.query(func.coalesce(func.sum(Invoice.total), 0)).filter(
-        func.date(Invoice.invoice_date) >= month_ago
+        Invoice.live(), func.date(Invoice.invoice_date) >= month_ago
     ).scalar() or 0
 
     total_products = Product.query.filter_by(active=True).count()
@@ -41,7 +41,7 @@ def dashboard():
     for i in range(6, -1, -1):
         d = today - timedelta(days=i)
         s = db.session.query(func.coalesce(func.sum(Invoice.total), 0)).filter(
-            func.date(Invoice.invoice_date) == d
+            Invoice.live(), func.date(Invoice.invoice_date) == d
         ).scalar() or 0
         trend_labels.append(d.strftime("%b %d"))
         trend_values.append(float(s))

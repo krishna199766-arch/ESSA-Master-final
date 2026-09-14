@@ -27,7 +27,7 @@ what has already been credited.
 from datetime import date, datetime
 
 from flask import (Blueprint, render_template, request, redirect, url_for,
-                   flash, jsonify, current_app)
+                   flash, jsonify, current_app, session)
 from flask_login import login_required, current_user
 
 from app import db, promotions
@@ -51,6 +51,10 @@ def index():
             invoice = Invoice.query.get(int(q))
         if not invoice:
             flash(f"No invoice matches '{q}'.", "warning")
+        elif invoice.is_cancelled:
+            flash(f"{invoice.invoice_number} was cancelled — its goods are already back "
+                  "and nothing can be returned against it.", "warning")
+            invoice = None
     recent = CreditNote.query.order_by(CreditNote.id.desc()).limit(10).all()
     return render_template("returns/index.html", q=q, invoice=invoice, recent=recent)
 
@@ -86,6 +90,9 @@ def create():
     """Take back some of an invoice and hand the money over."""
     invoice_id = request.form.get("invoice_id", type=int)
     inv = Invoice.query.get_or_404(invoice_id)
+    if inv.is_cancelled:
+        flash(f"{inv.invoice_number} was cancelled — nothing can be returned against it.", "danger")
+        return redirect(url_for("returns.index", q=inv.invoice_number))
 
     staff = resolve_staff(request.form.get("staff_code"))
     if staff is None:
@@ -123,13 +130,20 @@ def create():
               "the scheme's return rule.", "warning")
         return redirect(url_for("returns.index", q=inv.invoice_number))
 
+    # cash · card · upi hand money back; store_credit keeps it as a note the
+    # customer spends on a later bill (see app/vouchers.py)
+    refund_method = request.form.get("refund_method") or "cash"
+    if refund_method not in ("cash", "card", "upi", "store_credit"):
+        refund_method = "cash"
     note = CreditNote(
         number=generate_number("CRN", CreditNote, "number"),
         invoice_id=inv.id,
         staff_id=staff.id,
         cashier_id=current_user.id,
-        refund_method=request.form.get("refund_method") or "cash",
+        refund_method=refund_method,
         reason=(request.form.get("reason") or "").strip()[:256],
+        # which till's drawer a cash refund comes out of — see app/drawer.py
+        counter_id=session.get("counter_id"),
     )
     db.session.add(note)
     db.session.flush()
@@ -213,7 +227,11 @@ def create():
         customer.total_spent = round(max(0.0, (customer.total_spent or 0) - note.total), 2)
 
     db.session.commit()
-    flash(f"Return recorded — {note.number}, {note.total:.2f} refunded.", "success")
+    if note.refund_method == "store_credit":
+        flash(f"Return recorded — {note.number} for {note.total:.2f} kept as store credit. "
+              "The customer spends it at the counter under Credit note.", "success")
+    else:
+        flash(f"Return recorded — {note.number}, {note.total:.2f} refunded.", "success")
     for f in findings:
         if f.unearned_qty > 0:
             flash(f.message, "warning")

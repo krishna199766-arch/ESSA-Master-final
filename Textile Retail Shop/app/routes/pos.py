@@ -2,17 +2,20 @@ from flask import (Blueprint, render_template, request, redirect, url_for, flash
                    jsonify, current_app, session)
 from flask_login import login_required, current_user
 from datetime import datetime
+from itsdangerous import URLSafeSerializer
 from app import db
-from app import billing_numbers, places, promotions, transfers, warehouse_items
+from app import (billing_numbers, cancellation, drawer, places, promotions, transfers,
+                 vouchers, warehouse_items)
+from app.utils import role_required
 # Every name this file needs is imported HERE, at module level, and never inside
 # a view. This package is loaded as `app`, and when the shop is served inside the
 # Essa backend that name belongs to the backend by the time a request arrives —
 # so a late `from app…` reaches into the wrong package and raises ImportError at
 # the worst moment, on a screen that worked in every test run standalone. See
 # backend/app/pos_mount.py, and the same note in app/places.py.
-from app.models import (Product, Customer, Floor, Invoice, InvoiceItem,
+from app.models import (Product, Coupon, Customer, Floor, Invoice, InvoiceItem,
                         InvoicePayment, StockMovement, LoyaltyTxn, User,
-                        PAYMENT_METHODS)
+                        PAYMENT_METHODS, VOUCHER_METHODS)
 
 pos_bp = Blueprint("pos", __name__)
 
@@ -50,7 +53,7 @@ def parse_payments(data):
     out = []
     for row in raw:
         method = (row.get("method") or "").strip().lower()
-        if method not in PAYMENT_METHODS:
+        if method not in PAYMENT_METHODS and method not in VOUCHER_METHODS:
             raise ValueError(f"“{method}” is not a payment method")
         try:
             amount = round(float(row.get("amount") or 0), 2)
@@ -63,6 +66,8 @@ def parse_payments(data):
         if tendered < amount - SETTLE_TOLERANCE:
             raise ValueError(f"{method}: {tendered:g} tendered against {amount:g} — "
                              f"less was handed over than is being settled")
+        if method == "credit_note" and not (row.get("reference") or "").strip():
+            raise ValueError("Enter the credit note's number to spend it")
         if method != "cash" and tendered > amount + SETTLE_TOLERANCE:
             # Only a drawer gives change. A card or a UPI transfer is for an
             # exact amount, and recording an over-tender on one would invent
@@ -176,7 +181,8 @@ def counter():
                            chosen_company=company, chosen_location=location,
                            chosen_floor=storey, chosen_counter=till,
                            next_bill=billing_numbers.peek(storey),
-                           default_company=places.default_company())
+                           default_company=places.default_company(),
+                           drawer_open=drawer.current(till.id if till else None))
 
 
 def _place_json(company, location, storey, till):
@@ -499,6 +505,30 @@ def checkout():
         # apply discount to subtotal proportionally to keep tax reasonable
         if discount > subtotal:
             discount = subtotal
+        # The bill records the discount it was actually built on, not the figure
+        # typed — a ₹5,000 discount on a ₹3,000 cart took ₹3,000 off.
+        inv.discount = discount
+
+        # ---- a coupon ----------------------------------------------------------
+        # A reduction the shop gives, so it joins the discount rather than the
+        # tenders. Valued against the bill as it stands after the typed discount,
+        # and never more than the goods are worth, so it cannot eat into the tax.
+        # Checked again here whatever the counter showed: a coupon used at another
+        # till a minute ago must not be spent twice.
+        coupon, coupon_amt = None, 0.0
+        coupon_code = (data.get("coupon_code") or "").strip()
+        if coupon_code:
+            coupon = vouchers.find_coupon(coupon_code)
+            try:
+                coupon_amt = vouchers.coupon_amount(
+                    coupon, round(subtotal - discount + total_tax, 2),
+                    customer_id=customer_id, discount_room=subtotal - discount)
+            except vouchers.CouponError as exc:
+                db.session.rollback()
+                return jsonify({"error": str(exc)}), 400
+            discount = round(discount + coupon_amt, 2)
+            inv.discount = discount
+            inv.coupon_discount = coupon_amt
 
         if is_interstate:
             inv.igst = round(total_tax, 2)
@@ -533,6 +563,15 @@ def checkout():
             # the old single-method shape — settle the whole bill that way
             payments = [{"method": payment_method, "amount": inv.total,
                          "tendered": inv.total, "reference": None}]
+        # Store credit and advances are checked against what is left on them and
+        # pinned to the documents they draw on — see app/vouchers.py.
+        try:
+            payments = vouchers.settle_vouchers(payments, customer_id)
+        except ValueError as exc:
+            db.session.rollback()
+            return jsonify({"error": str(exc)}), 400
+        payment_method = ("mixed" if len({p["method"] for p in payments}) > 1
+                          else payments[0]["method"])
         settled = round(sum(p["amount"] for p in payments), 2)
         if abs(settled - inv.total) > SETTLE_TOLERANCE:
             db.session.rollback()
@@ -561,8 +600,16 @@ def checkout():
         elif customer:
             customer.total_spent = (customer.total_spent or 0) + inv.total
 
+        if coupon is not None and coupon_amt > 0:
+            vouchers.redeem(coupon, inv, coupon_amt)
+        # …and whatever coupon this bill earns for next time.
+        issued = vouchers.issue_at_settlement(inv, user_id=current_user.id)
+
         db.session.commit()
         return jsonify({"success": True, "invoice_id": inv.id,
+                        "coupons_issued": [{"code": c.code, "worth": c.campaign.describe,
+                                            "valid_to": c.valid_to.strftime("%d-%m-%Y")}
+                                           for c in issued],
                         "invoice_number": inv.invoice_number,
                         "total": inv.total, "payment_method": inv.payment_method,
                         # what to hand back, so the counter can say it out loud
@@ -583,18 +630,115 @@ def checkout():
         return jsonify({"error": str(e)}), 500
 
 
+@pos_bp.route("/api/coupon")
+@login_required
+def api_coupon():
+    """Is this coupon good for this bill, and what does it take off?
+
+    The counter asks when the code is applied so the saving is on screen before
+    the customer pays. Advisory — `checkout` values the coupon again itself.
+
+    A bill still short of the coupon's minimum does not make the code bad: a
+    cashier may apply it before the rest of the cart is rung up. So the code is
+    checked as if the minimum were met, and `below_min` says it is not met yet.
+    """
+    code = (request.args.get("code") or "").strip()
+    amount = request.args.get("amount", type=float) or 0.0
+    room = request.args.get("room", type=float)
+    customer_id = request.args.get("customer_id", type=int)
+    coupon = vouchers.find_coupon(code)
+    min_bill = (coupon.campaign.min_bill or 0) if coupon and coupon.campaign else 0
+    below = amount + vouchers.TOL < min_bill
+    try:
+        value = vouchers.coupon_amount(coupon, max(amount, min_bill), customer_id=customer_id,
+                                       discount_room=room)
+    except vouchers.CouponError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 200
+    c = coupon.campaign
+    return jsonify({"ok": True, "code": coupon.code, "amount": 0.0 if below else value,
+                    "below_min": below,
+                    "describe": c.describe, "kind": c.kind, "value": c.value,
+                    "min_bill": min_bill, "max_discount": c.max_discount,
+                    "customer_id": coupon.customer_id})
+
+
+@pos_bp.route("/api/credit-note")
+@login_required
+def api_credit_note():
+    """What is left on a credit note kept as store credit."""
+    note = vouchers.find_credit_note(request.args.get("code"))
+    if note is None:
+        return jsonify({"ok": False, "error": "No credit note with that number"})
+    if (note.refund_method or "") != "store_credit":
+        return jsonify({"ok": False, "error": f"{note.number} was refunded as "
+                        f"{(note.refund_method or 'cash').replace('_', ' ')}, not kept as store credit"})
+    return jsonify({"ok": True, "number": note.number, "total": note.total,
+                    "balance": vouchers.credit_note_balance(note),
+                    "customer": note.invoice.customer.name if note.invoice.customer else None})
+
+
+@pos_bp.route("/api/advance-balance")
+@login_required
+def api_advance_balance():
+    """The customer's unspent advances, for the Advance tender."""
+    cid = request.args.get("customer_id", type=int)
+    return jsonify({"balance": vouchers.customer_advance_balance(cid),
+                    "advances": [{"number": a.number, "balance": b}
+                                 for a, b in vouchers.open_advances(cid)]})
+
+
+def _feedback_link(inv):
+    """The customer's own feedback page for this bill — see routes/feedback.py."""
+    token = URLSafeSerializer(current_app.config["SECRET_KEY"], salt="feedback").dumps(inv.id)
+    return url_for("feedback.give", token=token, _external=True)
+
+
+def _invoice_page(inv, print_view):
+    return render_template(
+        "pos/invoice.html", inv=inv, print_view=print_view,
+        cancel_blocked=cancellation.why_not(inv, current_user),
+        coupons_issued=Coupon.query.filter_by(issued_invoice_id=inv.id).all(),
+        feedback_link=_feedback_link(inv) if not inv.is_cancelled else None)
+
+
 @pos_bp.route("/invoice/<int:iid>")
 @login_required
 def view_invoice(iid):
     inv = Invoice.query.get_or_404(iid)
-    return render_template("pos/invoice.html", inv=inv, print_view=False)
+    return _invoice_page(inv, False)
 
 
 @pos_bp.route("/invoice/<int:iid>/print")
 @login_required
 def print_invoice(iid):
     inv = Invoice.query.get_or_404(iid)
-    return render_template("pos/invoice.html", inv=inv, print_view=True)
+    return _invoice_page(inv, True)
+
+
+@pos_bp.route("/invoice/<int:iid>/cancel", methods=["POST"])
+@login_required
+@role_required("admin", "manager")
+def cancel_invoice(iid):
+    """Cancel a bill — see app/cancellation.py for what that undoes."""
+    inv = Invoice.query.get_or_404(iid)
+    blocked = cancellation.why_not(inv, current_user)
+    if blocked:
+        flash(blocked, "danger")
+        return redirect(url_for("pos.view_invoice", iid=inv.id))
+    try:
+        outcome = cancellation.cancel(inv, current_user, request.form.get("reason"))
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return redirect(url_for("pos.view_invoice", iid=inv.id))
+    db.session.commit()
+    back = " · ".join(f"{m.upper()} ₹{a:,.2f}" for m, a in outcome["refund"].items() if a)
+    flash(f"{inv.invoice_number} cancelled. Stock, points and promotions are back"
+          + (f". Hand back {back}." if back else "."), "success")
+    for method, ref, amount in outcome["vouchers"]:
+        flash(f"₹{amount:,.2f} is available again on {ref} "
+              f"({'store credit' if method == 'credit_note' else 'advance'}).", "info")
+    return redirect(url_for("pos.view_invoice", iid=inv.id))
 
 
 @pos_bp.route("/invoices")
@@ -611,8 +755,15 @@ def invoice_list():
     series    = (request.args.get("series") or "").strip().upper()
     min_amt   = request.args.get("min", type=float)
     max_amt   = request.args.get("max", type=float)
+    status    = (request.args.get("status") or "").strip()
 
     query = Invoice.query.outerjoin(Customer, Invoice.customer_id == Customer.id)
+    # Cancelled bills stay in the register — their numbers are part of the series
+    # — but they are shown only when asked for, and never in the totals.
+    if status == "cancelled":
+        query = query.filter(Invoice.payment_status == "cancelled")
+    elif status != "all":
+        query = query.filter(Invoice.live())
 
     if q:
         like = f"%{q}%"
@@ -646,10 +797,11 @@ def invoice_list():
                                   Invoice.bill_seq.desc()).limit(500).all()
     else:
         invoices = query.order_by(Invoice.invoice_date.desc()).limit(500).all()
+    counted = [i for i in invoices if not i.is_cancelled]
     summary = {
         "count": len(invoices),
-        "total": sum(i.total for i in invoices),
-        "tax":   sum(i.cgst + i.sgst + i.igst for i in invoices),
+        "total": sum(i.total for i in counted),
+        "tax":   sum(i.cgst + i.sgst + i.igst for i in counted),
     }
     cashiers = User.query.filter_by(active=True).order_by(User.full_name).all()
 
@@ -676,7 +828,7 @@ def invoice_list():
         invoices=invoices, summary=summary, cashiers=cashiers,
         q=q, date_from=date_from, date_to=date_to,
         cashier_id=cashier, payment=payment,
-        series=series, series_options=series_options,
+        series=series, series_options=series_options, status=status,
         min_amt=min_amt if min_amt is not None else "",
         max_amt=max_amt if max_amt is not None else "",
     )

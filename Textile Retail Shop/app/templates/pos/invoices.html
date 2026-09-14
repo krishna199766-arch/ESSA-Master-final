@@ -35,8 +35,18 @@
       <label class="form-label small mb-1">Payment</label>
       <select class="form-select form-select-sm" name="payment">
         <option value="">All</option>
-        {% for m in ['cash','card','upi'] %}
-        <option value="{{ m }}" {% if payment==m %}selected{% endif %}>{{ m|upper }}</option>
+        {% for m, label in [('cash','CASH'),('card','CARD'),('upi','UPI'),('credit_note','CREDIT NOTE'),('advance','ADVANCE'),('mixed','MIXED')] %}
+        <option value="{{ m }}" {% if payment==m %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {# Cancelled bills keep their numbers in the register, so they can be
+       listed — but only on request, and never inside the totals. #}
+    <div class="col-6 col-md-3 col-lg-2">
+      <label class="form-label small mb-1">Bills</label>
+      <select class="form-select form-select-sm" name="status">
+        {% for v, label in [('', 'Live bills'), ('cancelled', 'Cancelled only'), ('all', 'All, with cancelled')] %}
+        <option value="{{ v }}" {% if status == v %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
     </div>
@@ -85,8 +95,9 @@
       </thead>
       <tbody>
         {% for i in invoices %}
-        <tr>
-          <td><code>{{ i.invoice_number }}</code></td>
+        <tr class="{{ 'text-muted' if i.is_cancelled }}">
+          <td><code>{{ i.invoice_number }}</code>
+            {% if i.is_cancelled %}<br><span class="status-badge danger sm" title="{{ i.cancel_reason or '' }}">cancelled</span>{% endif %}</td>
           <td class="small">{% if i.floor %}{{ i.floor.name }}
             {% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>{{ i.invoice_date.strftime('%d %b %Y %H:%M') }}</td>
@@ -95,8 +106,12 @@
             {% else %}Walk-in{% endif %}
           </td>
           <td>{{ (i.staff.full_name if i.staff else i.cashier.full_name) }}</td>
-          <td><span class="badge bg-secondary">{{ i.payment_method }}</span></td>
+          <td><span class="badge bg-secondary">{{ (i.payment_method or '')|replace('_', ' ') }}</span></td>
+          {% if i.is_cancelled %}
+          <td class="text-end text-decoration-line-through">{{ i.total|inr }}</td>
+          {% else %}
           <td class="text-end fw-bold" style="color:var(--brand-dark)">{{ i.total|inr }}</td>
+          {% endif %}
           <td>
             <a href="{{ url_for('pos.view_invoice', iid=i.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
             <a href="{{ url_for('pos.print_invoice', iid=i.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-printer"></i></a>

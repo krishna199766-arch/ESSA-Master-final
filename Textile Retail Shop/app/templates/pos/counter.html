@@ -81,6 +81,12 @@
       </span>
       <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal"
               data-bs-target="#placeModal"><i class="bi bi-shop"></i> Change</button>
+      {# The drawer on this till. Billing does not wait on it — a shop that never
+         counts its drawer still has to sell — but a closed one is said out loud. #}
+      <a href="{{ url_for('drawer.index') }}"
+         class="btn btn-sm {{ 'btn-outline-secondary' if drawer_open else 'btn-outline-warning' }}"
+         title="{{ ('Drawer open since ' ~ drawer_open.opened_at.strftime('%H:%M')) if drawer_open else 'The cash drawer on this till has not been opened' }}">
+        <i class="bi bi-inbox"></i> Drawer{{ '' if drawer_open else ' closed' }}</a>
     </div>
   </div>
   {% if not next_bill.mapped %}
@@ -247,6 +253,18 @@
             <div id="ptsHelp" class="small text-muted mt-1">Attach a customer to redeem points.</div>
           </div>
         </div>
+        {# A coupon comes off like a discount — the shop gives it, nobody paid for it
+           — so it sits with the discount and not among the tenders. The counter
+           shows what it is worth; checkout values it again before billing. #}
+        <div class="mt-2">
+          <label class="form-label small mb-1" for="couponCode">Coupon</label>
+          <div class="input-group input-group-sm">
+            <input id="couponCode" class="form-control text-uppercase" maxlength="32" placeholder="Coupon code" autocomplete="off">
+            <button type="button" id="couponApply" class="btn btn-outline-primary">Apply</button>
+            <button type="button" id="couponClear" class="btn btn-outline-secondary d-none" title="Remove coupon"><i class="bi bi-x"></i></button>
+          </div>
+          <div id="couponHelp" class="small mt-1 d-none"></div>
+        </div>
         <div class="d-flex justify-content-between align-items-center mt-2 pos-total-row"><strong>Total</strong><strong id="grandTotal" class="pos-total" style="color:var(--brand-dark)">₹0.00</strong></div>
 
         <!-- How this bill is being paid, for the sale that is paid ONE way.
@@ -299,7 +317,7 @@
         <button id="checkoutBtn" class="btn btn-brand w-100 mt-2">
           <i class="bi bi-cash-coin"></i> Settle &amp; bill</button>
         <button type="button" id="splitBtn" class="btn btn-link btn-sm w-100 mt-1 text-decoration-none"
-                title="Take this bill across more than one tender">Split across methods ›</button>
+                title="Take this bill across more than one tender, or from store credit or an advance">Split · store credit · advance ›</button>
       </div>
     </div>
   </div>
@@ -331,9 +349,15 @@
         <div class="col-3">Reference</div>
       </div>
 
+      {# The last two are money the customer already has with the shop: a credit
+         note kept as store credit, and an advance. Each is spent against the
+         document it draws on, so each says what is left on it as it is typed. #}
       {% for m, label, hint in [('cash','Cash','Notes handed over — over-tender is fine, the change is worked out'),
                                 ('card','Card','Card / approval reference'),
-                                ('upi','UPI','UPI transaction reference')] %}
+                                ('upi','UPI','UPI transaction reference'),
+                                ('credit_note','Credit note','Credit note no. (required)'),
+                                ('advance','Advance','Advance no. (optional)')] %}
+      {% if m == 'credit_note' %}<div class="small text-muted border-top pt-2 mt-3 mb-2">Store credit &amp; advances</div>{% endif %}
       <div class="row g-2 align-items-center mb-2 settle-row" data-method="{{ m }}">
         <div class="col-12 col-md-3">
           <button type="button" class="btn btn-outline-primary btn-sm w-100 st-rest"
@@ -354,6 +378,9 @@
           <input class="form-control form-control-sm st-ref" data-method="{{ m }}"
                  maxlength="64" placeholder="{{ hint }}" title="{{ hint }}">
         </div>
+        {% if m in ('credit_note', 'advance') %}
+        <div class="col-12 small st-note" data-method="{{ m }}" style="margin-top:0"></div>
+        {% endif %}
       </div>
       {% endfor %}
 
@@ -381,6 +408,9 @@
 <script>
 const cart = new Map();
 let currentCustomerId = null;
+//: The coupon applied to this cart, as /pos/api/coupon described it — see below.
+let appliedCoupon = null;
+window._couponOff = 0;
 
 // What the cart has earned, as the server last answered it. Held here and never
 // computed on this side: the till SHOWS promotions, the server DECIDES them, and
@@ -434,7 +464,8 @@ function renderCart(){
     }));
   }
   const discount = Math.min(parseFloat(document.getElementById('discount').value) || 0, subtotal);
-  const preLoyalty = Math.max(0, subtotal - discount + tax);
+  const couponOff = couponValue(subtotal - discount + tax, subtotal - discount);
+  const preLoyalty = Math.max(0, subtotal - discount - couponOff + tax);
   const requested = parseFloat(document.getElementById('redeemPoints').value) || 0;
   const available = window._custPoints || 0;
   const redeem = Math.min(requested, available, preLoyalty);
@@ -679,6 +710,75 @@ document.getElementById('productSearch').addEventListener('keydown', async e => 
 document.getElementById('discount').oninput = renderCart;
 document.getElementById('redeemPoints').oninput = renderCart;
 
+// ---- Coupon ------------------------------------------------------------------
+// The server says whether a code is good (withdrawn, expired, used, someone
+// else's) and hands back its rule; the cart re-applies that rule as the bill
+// changes, the same sum vouchers.coupon_amount does. Checkout values it again.
+function couponValue(bill, room){
+  const help = document.getElementById('couponHelp');
+  if (!appliedCoupon){ window._couponOff = 0; return 0; }
+  const c = appliedCoupon;
+  let off = 0, note = '';
+  if ((c.min_bill || 0) > bill + 0.01){
+    note = `${c.code} needs a bill of ₹${c.min_bill} or more — not applied yet.`;
+  } else {
+    off = c.kind === 'percent' ? bill * c.value / 100 : c.value;
+    if (c.kind === 'percent' && c.max_discount) off = Math.min(off, c.max_discount);
+    off = Math.max(0, Math.min(off, bill, room));
+    off = Math.round(off * 100) / 100;
+  }
+  help.classList.remove('d-none');
+  help.style.color = off > 0 ? 'var(--brand-dark)' : '#B45309';
+  help.innerHTML = off > 0
+    ? `<i class="bi bi-ticket-perforated"></i> <b>${c.code}</b> — ${c.describe}: <b>${fmt(off)} off</b>`
+    : note;
+  window._couponOff = off;
+  return off;
+}
+
+function clearCoupon(msg){
+  appliedCoupon = null;
+  document.getElementById('couponCode').value = '';
+  document.getElementById('couponCode').disabled = false;
+  document.getElementById('couponApply').classList.remove('d-none');
+  document.getElementById('couponClear').classList.add('d-none');
+  const help = document.getElementById('couponHelp');
+  help.classList.toggle('d-none', !msg);
+  help.style.color = '#BE123C';
+  help.innerText = msg || '';
+  renderCart();
+}
+
+async function applyCoupon(){
+  const code = document.getElementById('couponCode').value.trim();
+  if (!code) return;
+  const discount = parseFloat(document.getElementById('discount').value) || 0;
+  let subtotal = 0, tax = 0;
+  cart.forEach((it) => { subtotal += it.qty * it.price; tax += it.qty * it.price * it.gst / 100; });
+  const room = Math.max(0, subtotal - Math.min(discount, subtotal));
+  const qs = new URLSearchParams({code, amount: (room + tax).toFixed(2), room: room.toFixed(2)});
+  if (currentCustomerId) qs.set('customer_id', currentCustomerId);
+  try {
+    // A bill still below the coupon's minimum comes back ok with below_min, and
+    // the cart keeps the code and applies it once the bill gets there.
+    const j = await (await fetch(`${SHOP_ROOT}/pos/api/coupon?${qs}`)).json();
+    if (!j.ok){ clearCoupon(j.error || 'That coupon cannot be used.'); return; }
+    appliedCoupon = j;
+    document.getElementById('couponCode').value = j.code;
+    document.getElementById('couponCode').disabled = true;
+    document.getElementById('couponApply').classList.add('d-none');
+    document.getElementById('couponClear').classList.remove('d-none');
+    renderCart();
+  } catch (err){
+    clearCoupon('Could not check the coupon: ' + err);
+  }
+}
+document.getElementById('couponApply').onclick = applyCoupon;
+document.getElementById('couponCode').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter'){ e.preventDefault(); applyCoupon(); }
+});
+document.getElementById('couponClear').onclick = () => clearCoupon('');
+
 // ---- Customer lookup (mobile / invoice # / camera barcode) ----
 function paintCustomer(c){
   const card = document.getElementById('custCard');
@@ -697,6 +797,11 @@ function paintCustomer(c){
     window._custPoints = 0;
     document.getElementById('redeemPoints').value = 0;
     card.classList.add('d-none'); walkin.classList.remove('d-none');
+  }
+  // A coupon issued to one customer goes with that customer.
+  if (appliedCoupon && appliedCoupon.customer_id && appliedCoupon.customer_id !== currentCustomerId){
+    clearCoupon(`${appliedCoupon.code} belongs to another customer — removed.`);
+    return;
   }
   renderCart();
 }
@@ -891,11 +996,59 @@ document.getElementById('prodStopScan').onclick = async () => {
 // this is so the cashier sees the balance while they are still taking money,
 // not as an error after the customer has walked away.
 const settleModal = new bootstrap.Modal(document.getElementById('settleModal'));
-const METHODS = ['cash', 'card', 'upi'];
+const METHODS = ['cash', 'card', 'upi', 'credit_note', 'advance'];
 const stAmt = (m) => document.querySelector(`.st-amt[data-method="${m}"]`);
 const stTender = (m) => document.querySelector(`.st-tender[data-method="${m}"]`);
 const stRef = (m) => document.querySelector(`.st-ref[data-method="${m}"]`);
+const stNote = (m) => document.querySelector(`.st-note[data-method="${m}"]`);
 const num = (el) => parseFloat(el && el.value) || 0;
+
+// What is left to spend on the store credit / advance being used, as the server
+// last said. null = not looked up (or nothing to look up). The server checks it
+// again at checkout, pinned to the document — this is so the cashier sees it.
+const voucherLeft = {credit_note: null, advance: null};
+const voucherErr = {credit_note: '', advance: ''};
+
+async function lookupCreditNote(){
+  const code = (stRef('credit_note').value || '').trim();
+  voucherLeft.credit_note = null; voucherErr.credit_note = '';
+  if (!code){ paintVoucherNotes(); paintSettle(); return; }
+  try {
+    const j = await (await fetch(`${SHOP_ROOT}/pos/api/credit-note?code=${encodeURIComponent(code)}`)).json();
+    if (j.ok){ voucherLeft.credit_note = j.balance; stRef('credit_note').value = j.number; }
+    else voucherErr.credit_note = j.error;
+  } catch (err){ voucherErr.credit_note = 'Could not check the credit note: ' + err; }
+  paintVoucherNotes(); paintSettle();
+}
+
+async function lookupAdvance(){
+  voucherLeft.advance = null; voucherErr.advance = '';
+  if (!currentCustomerId){
+    voucherErr.advance = 'Attach the customer to pay from their advance.';
+  } else {
+    try {
+      const j = await (await fetch(`${SHOP_ROOT}/pos/api/advance-balance?customer_id=${currentCustomerId}`)).json();
+      const ref = (stRef('advance').value || '').trim().toUpperCase();
+      const one = ref ? j.advances.find((a) => a.number.toUpperCase() === ref) : null;
+      if (ref && !one) voucherErr.advance = `No advance “${ref}” with a balance for this customer.`;
+      voucherLeft.advance = ref ? (one ? one.balance : 0) : j.balance;
+    } catch (err){ voucherErr.advance = 'Could not check the advance: ' + err; }
+  }
+  paintVoucherNotes(); paintSettle();
+}
+
+function paintVoucherNotes(){
+  ['credit_note', 'advance'].forEach((m) => {
+    const el = stNote(m);
+    if (voucherErr[m]){ el.style.color = '#BE123C'; el.innerText = voucherErr[m]; }
+    else if (voucherLeft[m] !== null){
+      el.style.color = 'var(--brand-dark)';
+      el.innerText = `${fmt(voucherLeft[m])} available${m === 'advance' && !stRef(m).value.trim() ? ' across this customer’s advances' : ''}.`;
+    } else el.innerText = '';
+  });
+}
+stRef('credit_note').addEventListener('change', lookupCreditNote);
+stRef('advance').addEventListener('change', lookupAdvance);
 
 function settleRows(){
   return METHODS.map((m) => ({
@@ -936,6 +1089,13 @@ function paintSettle(){
     if (r.method === 'cash' && r.tendered < r.amount) {
       msg = 'Cash tendered is less than the cash being settled.';
     }
+    if (r.method === 'credit_note' || r.method === 'advance'){
+      const label = r.method === 'credit_note' ? 'store credit' : 'advance';
+      if (r.method === 'credit_note' && !r.reference) msg = 'Enter the credit note number to spend it.';
+      else if (voucherErr[r.method]) msg = voucherErr[r.method];
+      else if (voucherLeft[r.method] !== null && r.amount > voucherLeft[r.method] + 0.005)
+        msg = `Only ${fmt(voucherLeft[r.method])} ${label} is available.`;
+    }
   }
   warn.className = msg ? 'alert alert-warning py-2 mt-2 mb-0 small' : 'd-none';
   warn.innerText = msg;
@@ -963,7 +1123,9 @@ document.querySelectorAll('.st-rest').forEach((b) => {
     const due = Number(window._billTotal || 0);
     const others = settleRows().filter((r) => r.method !== m)
       .reduce((a, r) => a + r.amount, 0);
-    const rest = Math.round(Math.max(0, due - others) * 100) / 100;
+    let rest = Math.round(Math.max(0, due - others) * 100) / 100;
+    // Store credit and an advance only cover what is left on them.
+    if (voucherLeft[m] !== undefined && voucherLeft[m] !== null) rest = Math.min(rest, voucherLeft[m]);
     stAmt(m).value = rest ? rest.toFixed(2) : '';
     if (m === 'cash'){ const t = stTender('cash'); t.value = stAmt(m).value; delete t.dataset.touched; }
     paintSettle();
@@ -1044,6 +1206,12 @@ qpEl('splitBtn').onclick = () => {
     stAmt(m).value = ''; stRef(m).value = '';
     const t = stTender(m); t.value = ''; delete t.dataset.touched;
   });
+  voucherLeft.credit_note = null; voucherErr.credit_note = '';
+  paintVoucherNotes();
+  // The advance balance is looked up as the modal opens, so the cashier sees
+  // whether this customer has any before reaching for it.
+  if (currentCustomerId) lookupAdvance();
+  else { voucherLeft.advance = null; voucherErr.advance = ''; stNote('advance').style.color = ''; stNote('advance').innerText = 'Attach the customer to pay from their advance.'; }
   const m = qpMethod();
   stAmt(m).value = Number(window._billTotal || 0).toFixed(2);
   if (m === 'cash') stTender('cash').value = stAmt('cash').value;
@@ -1071,6 +1239,9 @@ async function submitSale(payments, btn){
     customer_id: currentCustomerId,
     discount: parseFloat(document.getElementById('discount').value) || 0,
     redeem_points: parseFloat(document.getElementById('redeemPoints').value) || 0,
+    // Only while it is taking something off — a code still short of its minimum
+    // is left behind rather than refusing the whole bill.
+    coupon_code: appliedCoupon && window._couponOff > 0 ? appliedCoupon.code : null,
     payments,
     // The paid lines only. Free items are not sent and would not be believed if
     // they were — the server works out what the promotion gives from these.

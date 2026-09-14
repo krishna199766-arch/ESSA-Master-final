@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h4><i class="bi bi-star"></i> Customer feedback</h4>
+  <a href="{{ url_for('customers.list_customers') }}" class="btn btn-outline-secondary btn-sm">Customers</a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3"><div class="stat-card card p-3 t-adjust"><div class="label">Average rating</div>
+    <div class="value">{{ '%.1f'|format(average) if average else '—' }}{% if average %} <span class="fs-6 text-warning">★</span>{% endif %}</div></div></div>
+  <div class="col-6 col-md-3"><div class="stat-card card p-3 t-count"><div class="label">Responses</div><div class="value">{{ rows|length }}</div></div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <form method="post" class="card p-3">
+      <div class="fw-semibold mb-2">Record feedback</div>
+      <label class="form-label small">Rating *</label>
+      <select class="form-select form-select-sm mb-2" name="rating" required>
+        <option value="">Pick…</option>
+        {% for r in [5,4,3,2,1] %}<option value="{{ r }}">{{ '★' * r }} ({{ r }})</option>{% endfor %}
+      </select>
+      <label class="form-label small">Bill number</label>
+      <input class="form-control form-control-sm mb-2" name="invoice" placeholder="Optional — ties it to the customer on the bill">
+      <label class="form-label small">Customer phone</label>
+      <input class="form-control form-control-sm mb-2" name="phone" placeholder="Optional, when there is no bill">
+      <label class="form-label small">Comments</label>
+      <textarea class="form-control form-control-sm mb-2" name="comments" rows="3"></textarea>
+      <button class="btn btn-brand btn-sm">Save</button>
+      <p class="small text-muted mt-2 mb-0">Customers can also rate a bill themselves by
+        scanning the QR code printed on it.</p>
+    </form>
+  </div>
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead><tr><th>Date</th><th>Rating</th><th>Customer</th><th>Bill</th><th>Comments</th><th>From</th></tr></thead>
+          <tbody>
+            {% for f in rows %}
+            <tr>
+              <td class="text-nowrap">{{ f.created_at|dmy }}</td>
+              <td class="text-nowrap"><span class="text-warning">{{ '★' * f.rating }}</span><span class="text-muted">{{ '★' * (5 - f.rating) }}</span></td>
+              <td>{% if f.customer %}<a href="{{ url_for('customers.view_customer', cid=f.customer_id) }}">{{ f.customer.name }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              <td>{% if f.invoice %}<a href="{{ url_for('pos.view_invoice', iid=f.invoice_id) }}">{{ f.invoice.invoice_number }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              <td class="small">{{ f.comments or '' }}</td>
+              <td class="small text-muted">{{ 'bill QR' if f.source == 'link' else (f.recorded_by.full_name or f.recorded_by.username if f.recorded_by else 'counter') }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted p-4">No feedback recorded yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

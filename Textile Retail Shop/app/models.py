@@ -150,6 +150,11 @@ class Customer(db.Model):
     state_code = db.Column(db.String(4), default="33")
     loyalty_points = db.Column(db.Float, default=0.0)
     total_spent = db.Column(db.Float, default=0.0)
+    #: For the birthday and anniversary wishes. Optional — a customer who would
+    #: rather not say is still a customer — and stored as dates, so a wish can be
+    #: found by day and month whatever the year.
+    dob = db.Column(db.Date)
+    anniversary = db.Column(db.Date)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     invoices = db.relationship("Invoice", backref="customer", lazy=True)
@@ -419,14 +424,36 @@ class Invoice(db.Model):
     location = db.relationship("Location")
     counter = db.relationship("Counter")
     floor = db.relationship("Floor")
-    payment_status = db.Column(db.String(16), default="paid")  # paid/pending
+    payment_status = db.Column(db.String(16), default="paid")  # paid/pending/cancelled
     is_interstate = db.Column(db.Boolean, default=False)
     notes = db.Column(db.String(256))
+
+    #: Cancellation. The row stays — its number is part of a statutory series and
+    #: a gap in the series is the one thing an auditor cannot be shown — and is
+    #: marked instead: `payment_status` becomes "cancelled" (which is also what the
+    #: warehouse's own sales queries count by, so they drop it without being
+    #: told), with who, when and why kept beside it. See app/cancellation.py.
+    cancelled_at = db.Column(db.DateTime)
+    cancelled_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    cancel_reason = db.Column(db.String(256))
+    #: The part of `discount` that came off a coupon, so the bill can print the
+    #: two apart. `discount` stays the whole reduction every total is built on.
+    coupon_discount = db.Column(db.Float, default=0.0)
+    cancelled_by = db.relationship("User", foreign_keys=[cancelled_by_id])
 
     items = db.relationship("InvoiceItem", backref="invoice", lazy=True, cascade="all, delete-orphan")
     payments = db.relationship("InvoicePayment", backref="invoice", lazy=True,
                                cascade="all, delete-orphan",
                                order_by="InvoicePayment.id")
+
+    @property
+    def is_cancelled(self):
+        return (self.payment_status or "") == "cancelled"
+
+    @classmethod
+    def live(cls):
+        """The filter every sales figure uses: a cancelled bill sold nothing."""
+        return db.or_(cls.payment_status.is_(None), cls.payment_status != "cancelled")
 
     @property
     def settled(self):
@@ -522,6 +549,14 @@ class InvoicePayment(db.Model):
 #: the reports cannot disagree about what a payment method is.
 PAYMENT_METHODS = ("cash", "card", "upi")
 
+#: Money the customer already paid the shop, spent against a bill. Each needs the
+#: document it draws on as its `reference` — a credit note kept as store credit,
+#: or an advance — and is checked against that document's balance at the till.
+VOUCHER_METHODS = ("credit_note", "advance")
+
+TENDER_LABELS = {"cash": "Cash", "card": "Card", "upi": "UPI",
+                 "credit_note": "Credit note", "advance": "Advance"}
+
 
 class InvoiceItem(db.Model):
     __tablename__ = "invoice_items"
@@ -571,7 +606,12 @@ class InvoiceItem(db.Model):
 
     @property
     def returnable_qty(self):
-        """What is still left to return — nothing can come back twice."""
+        """What is still left to return — nothing can come back twice.
+
+        Nothing at all on a cancelled bill: cancelling already put the goods back.
+        """
+        if self.invoice is not None and self.invoice.is_cancelled:
+            return 0.0
         return max(0.0, round(self.quantity - self.returned_qty, 3))
 
     @property
@@ -593,7 +633,11 @@ class InvoiceItem(db.Model):
         Under-stating is the one to live with. It shows up as a customer at the
         counter with a bill and a discrepancy a person then looks at; the other
         way round hands over goods that have already been refunded, silently.
+
+        A cancelled bill owes nothing: its goods are back on the shelf.
         """
+        if self.invoice is not None and self.invoice.is_cancelled:
+            return 0.0
         return max(0.0, round(self.quantity - self.delivered_qty
                               - self.returned_qty, 3))
 
@@ -631,8 +675,12 @@ class CreditNote(db.Model):
     #: against this refund. 0 on every return that breaks no promotion, which is
     #: nearly all of them — see app/promotions.review_return.
     promo_clawback = db.Column(db.Float, default=0.0)
+    #: cash · card · upi — money handed back — or `store_credit`: nothing handed
+    #: back, and the note spent later as a tender (see app/vouchers.py).
     refund_method = db.Column(db.String(16), default="cash")
     reason = db.Column(db.String(256))
+    #: Which till raised it, so a cash refund comes out of the right drawer.
+    counter_id = db.Column(db.Integer, db.ForeignKey("counters.id"), index=True)
 
     invoice = db.relationship("Invoice", backref=db.backref("credit_notes", lazy=True))
     staff = db.relationship("User", foreign_keys=[staff_id])
@@ -1507,3 +1555,258 @@ class SaleSessionItem(db.Model):
     def recompute(self):
         self.line_total = round(self.quantity * self.unit_price, 2)
         self.tax_amount = round(self.line_total * self.gst_rate / 100.0, 2)
+
+
+# ---------- Customer advances ----------
+class CustomerAdvance(db.Model):
+    """Money a customer leaves with the shop before the bill exists.
+
+    A deposit on an order, or a balance kept on account. It is NOT a sale — no
+    goods, no tax — so it is its own document, and it is spent later as a tender
+    (`InvoicePayment.method == "advance"`, `reference` = this number). What is
+    left of it is always worked out from those payments, never stored, so the
+    balance cannot drift from the bills it was spent on. See app/vouchers.py.
+    """
+    __tablename__ = "customer_advances"
+    id = db.Column(db.Integer, primary_key=True)
+    number = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"), nullable=False, index=True)
+    amount = db.Column(db.Float, nullable=False)
+    method = db.Column(db.String(16), nullable=False, default="cash")   # cash/card/upi
+    reference = db.Column(db.String(64))
+    note = db.Column(db.String(256))
+    cashier_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), index=True)
+    location_id = db.Column(db.Integer, db.ForeignKey("locations.id"), index=True)
+    counter_id = db.Column(db.Integer, db.ForeignKey("counters.id"), index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    #: What was handed back of an unspent advance, and how.
+    refunded = db.Column(db.Float, default=0.0)
+    refund_method = db.Column(db.String(16))
+    refunded_at = db.Column(db.DateTime)
+    refunded_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+
+    customer = db.relationship("Customer", backref=db.backref("advances", lazy=True))
+    cashier = db.relationship("User", foreign_keys=[cashier_id])
+    refunded_by = db.relationship("User", foreign_keys=[refunded_by_id])
+    location = db.relationship("Location")
+    counter = db.relationship("Counter")
+
+
+# ---------- Coupons ----------
+COUPON_KINDS = ("amount", "percent")
+
+
+class CouponCampaign(db.Model):
+    """The rule a batch of coupons is cut from — what it is worth and when.
+
+    `issue_at_settlement` makes the till hand one out by itself: a bill of at
+    least `settlement_min_bill` gets a fresh coupon for the next visit, printed on
+    the bill. Otherwise coupons are issued by hand from the Coupons screen.
+    """
+    __tablename__ = "coupon_campaigns"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False)
+    kind = db.Column(db.String(8), nullable=False, default="amount")   # amount/percent
+    value = db.Column(db.Float, nullable=False, default=0.0)
+    #: The bill has to come to at least this before the coupon applies.
+    min_bill = db.Column(db.Float, default=0.0)
+    #: A cap on a percentage coupon's rupees. Null = no cap.
+    max_discount = db.Column(db.Float)
+    #: How long each coupon cut from this is good for, from the day it is issued.
+    valid_days = db.Column(db.Integer, default=30)
+    #: Uses per coupon; null means as often as it is presented.
+    uses_per_coupon = db.Column(db.Integer, default=1)
+    issue_at_settlement = db.Column(db.Boolean, default=False)
+    settlement_min_bill = db.Column(db.Float, default=0.0)
+    active = db.Column(db.Boolean, default=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    coupons = db.relationship("Coupon", backref="campaign", lazy=True)
+
+    @property
+    def describe(self):
+        worth = (f"₹{self.value:g} off" if self.kind == "amount"
+                 else f"{self.value:g}% off" + (f" (up to ₹{self.max_discount:g})"
+                                                if self.max_discount else ""))
+        return worth + (f" on bills of ₹{self.min_bill:g}+" if self.min_bill else "")
+
+
+class Coupon(db.Model):
+    """One code a customer can present. Cut from a campaign."""
+    __tablename__ = "coupons"
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("coupon_campaigns.id"), nullable=False, index=True)
+    #: Tied to one customer, or null for a code anyone may present.
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"), index=True)
+    valid_from = db.Column(db.Date)
+    valid_to = db.Column(db.Date)
+    uses_allowed = db.Column(db.Integer)
+    #: manual · settlement
+    issued_via = db.Column(db.String(16), default="manual", index=True)
+    #: The bill that earned it, for a settlement coupon.
+    issued_invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), index=True)
+    active = db.Column(db.Boolean, default=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    customer = db.relationship("Customer")
+    issued_invoice = db.relationship("Invoice", foreign_keys=[issued_invoice_id])
+    redemptions = db.relationship("CouponRedemption", backref="coupon", lazy=True)
+
+    @property
+    def uses(self):
+        return sum(1 for r in self.redemptions if not r.voided_at)
+
+    def state(self, today=None):
+        """withdrawn · expired · used · valid — worked out, never stored."""
+        today = today or date.today()
+        if not self.active:
+            return "withdrawn"
+        if self.valid_to and self.valid_to < today:
+            return "expired"
+        if self.uses_allowed is not None and self.uses >= self.uses_allowed:
+            return "used"
+        return "valid"
+
+
+class CouponRedemption(db.Model):
+    """A coupon spent on a bill. Voided, not deleted, when that bill is cancelled."""
+    __tablename__ = "coupon_redemptions"
+    id = db.Column(db.Integer, primary_key=True)
+    coupon_id = db.Column(db.Integer, db.ForeignKey("coupons.id"), nullable=False, index=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), nullable=False, index=True)
+    amount = db.Column(db.Float, nullable=False, default=0.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    voided_at = db.Column(db.DateTime)
+
+    invoice = db.relationship("Invoice", backref=db.backref("coupon_redemptions", lazy=True))
+
+
+# ---------- Customer feedback ----------
+class CustomerFeedback(db.Model):
+    """How a customer said it went — a rating and, if they gave one, a comment."""
+    __tablename__ = "customer_feedback"
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"), index=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), index=True)
+    rating = db.Column(db.Integer, nullable=False)          # 1–5
+    comments = db.Column(db.Text)
+    #: counter — typed in by staff · link — sent by the customer from the bill
+    source = db.Column(db.String(16), default="counter")
+    recorded_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    customer = db.relationship("Customer")
+    invoice = db.relationship("Invoice")
+    recorded_by = db.relationship("User")
+
+
+# ---------- Scheduled messages ----------
+MESSAGE_KINDS = ("birthday", "anniversary", "offer", "custom")
+
+
+class ScheduledMessage(db.Model):
+    """One message to one customer, due at a time — and what happened to it.
+
+    The log IS the record. `logged` means it came due while no SMS or WhatsApp
+    provider was configured, so nothing left the building; it stays in the log
+    saying so rather than pretending to have been sent. See app/messaging.py.
+    """
+    __tablename__ = "scheduled_messages"
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"), index=True)
+    phone = db.Column(db.String(32))
+    kind = db.Column(db.String(16), default="custom", index=True)
+    body = db.Column(db.Text, nullable=False)
+    #: Shop wall-clock time, not UTC — see app/messaging.py.
+    scheduled_for = db.Column(db.DateTime, default=datetime.now, index=True)
+    #: queued · sent · failed · logged · cancelled
+    status = db.Column(db.String(16), default="queued", index=True)
+    attempts = db.Column(db.Integer, default=0)
+    sent_at = db.Column(db.DateTime)
+    error = db.Column(db.String(256))
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    customer = db.relationship("Customer")
+    created_by = db.relationship("User")
+
+
+# ---------- Cash drawer ----------
+class DrawerSession(db.Model):
+    """One till's drawer, from the float put in to the count taken out.
+
+    `expected_cash` is written when the drawer is closed, from the cash that
+    moved through this till in between — see app/drawer.py — so a closed session
+    keeps saying what the books expected even if a bill is cancelled later.
+    """
+    __tablename__ = "drawer_sessions"
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), index=True)
+    location_id = db.Column(db.Integer, db.ForeignKey("locations.id"), index=True)
+    counter_id = db.Column(db.Integer, db.ForeignKey("counters.id"), index=True)
+    opened_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    opened_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    opening_float = db.Column(db.Float, nullable=False, default=0.0)
+    closed_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    closed_at = db.Column(db.DateTime, index=True)
+    counted_cash = db.Column(db.Float)
+    expected_cash = db.Column(db.Float)
+    notes = db.Column(db.String(256))
+
+    opened_by = db.relationship("User", foreign_keys=[opened_by_id])
+    closed_by = db.relationship("User", foreign_keys=[closed_by_id])
+    location = db.relationship("Location")
+    counter = db.relationship("Counter")
+
+    @property
+    def difference(self):
+        if self.counted_cash is None or self.expected_cash is None:
+            return None
+        return round(self.counted_cash - self.expected_cash, 2)
+
+
+# ---------- Staff advances ----------
+class StaffAdvance(db.Model):
+    """Money paid to a member of staff ahead of salary."""
+    __tablename__ = "staff_advances"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    amount = db.Column(db.Float, nullable=False)
+    given_on = db.Column(db.Date, default=date.today, index=True)
+    method = db.Column(db.String(16), default="cash")
+    note = db.Column(db.String(256))
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User", foreign_keys=[user_id],
+                           backref=db.backref("advances", lazy=True))
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+    recoveries = db.relationship("StaffAdvanceRecovery", backref="advance", lazy=True,
+                                 cascade="all, delete-orphan",
+                                 order_by="StaffAdvanceRecovery.id")
+
+    @property
+    def recovered(self):
+        return round(sum(r.amount or 0 for r in self.recoveries), 2)
+
+    @property
+    def balance(self):
+        return round((self.amount or 0) - self.recovered, 2)
+
+
+class StaffAdvanceRecovery(db.Model):
+    """Some of an advance paid back — off the salary, or in cash."""
+    __tablename__ = "staff_advance_recoveries"
+    id = db.Column(db.Integer, primary_key=True)
+    advance_id = db.Column(db.Integer, db.ForeignKey("staff_advances.id"), nullable=False, index=True)
+    amount = db.Column(db.Float, nullable=False)
+    recovered_on = db.Column(db.Date, default=date.today)
+    #: salary · cash
+    method = db.Column(db.String(16), default="salary")
+    note = db.Column(db.String(256))
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

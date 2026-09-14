@@ -1,0 +1,59 @@
+<!doctype html>
+{# The customer's page, on their own phone — so no staff header, no menu, and
+   nothing that needs a login. Opened from the QR code on their bill. #}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>How did we do? — {{ SHOP_NAME }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta name="theme-color" content="#0B3D2E">
+  <style>
+    body { background: #F7F9F7; color: #17221D; font-family: Inter, system-ui, sans-serif; }
+    .fb-card { max-width: 440px; margin: 32px auto; padding: 0 16px; }
+    .fb-head { background: #0B3D2E; color: #fff; border-radius: 14px 14px 0 0; padding: 20px 22px; }
+    .fb-body { background: #fff; border: 1px solid #DCE5DF; border-top: 0; border-radius: 0 0 14px 14px; padding: 22px; }
+    .stars { display: flex; flex-direction: row-reverse; justify-content: center; gap: 6px; }
+    .stars input { position: absolute; opacity: 0; pointer-events: none; }
+    .stars label { font-size: 42px; line-height: 1; color: #DCE5DF; cursor: pointer; transition: color .12s; }
+    .stars input:checked ~ label, .stars label:hover, .stars label:hover ~ label { color: #E0A526; }
+    .stars input:focus-visible + label { outline: 2px solid #2F8F68; outline-offset: 2px; border-radius: 4px; }
+    .btn-brand { background: #2F8F68; border-color: #2F8F68; color: #fff; }
+    .btn-brand:hover { background: #0B3D2E; border-color: #0B3D2E; color: #fff; }
+    .muted { color: #647069; }
+  </style>
+</head>
+<body>
+  <div class="fb-card">
+    <div class="fb-head">
+      <div class="fw-semibold fs-5">{{ SHOP_NAME }}</div>
+      <div class="small opacity-75">Bill {{ inv.invoice_number }} · {{ inv.invoice_date.strftime('%d %b %Y') }}</div>
+    </div>
+    <div class="fb-body">
+      {% if thanks %}
+        <div class="text-center py-3">
+          <div style="font-size:44px;color:#2F8F68">✓</div>
+          <div class="fw-semibold fs-5 mb-1">Thank you!</div>
+          <div class="muted">Your feedback on this visit has been received.</div>
+        </div>
+      {% else %}
+        <form method="post">
+          <div class="fw-semibold fs-5 text-center mb-1">How was your visit{% if inv.customer %}, {{ inv.customer.name.split()[0] }}{% endif %}?</div>
+          <div class="muted small text-center mb-3">Tap a star</div>
+          {% if error %}<div class="alert alert-danger py-2 small">{{ error }}</div>{% endif %}
+          <div class="stars mb-3" role="radiogroup" aria-label="Rating">
+            {% for r in [5,4,3,2,1] %}
+            <input type="radio" name="rating" id="r{{ r }}" value="{{ r }}" required>
+            <label for="r{{ r }}" title="{{ r }} star{{ 's' if r > 1 }}">★</label>
+            {% endfor %}
+          </div>
+          <label class="form-label small muted" for="comments">Anything you'd like to tell us?</label>
+          <textarea class="form-control mb-3" id="comments" name="comments" rows="4" maxlength="2000"></textarea>
+          <button class="btn btn-brand w-100 py-2">Send feedback</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

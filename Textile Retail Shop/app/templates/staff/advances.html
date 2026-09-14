@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h4><i class="bi bi-cash-coin"></i> Salary advances</h4>
+  <a href="{{ url_for('staff.list_staff') }}" class="btn btn-outline-secondary btn-sm">Staff</a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3"><div class="stat-card card p-3 t-money"><div class="label">To be recovered</div><div class="value">{{ outstanding|inr }}</div></div></div>
+  <div class="col-6 col-md-3"><div class="stat-card card p-3 t-count"><div class="label">Staff with a balance</div><div class="value">{{ balances.values()|select('gt', 0)|list|length }}</div></div></div>
+</div>
+
+<form method="post" action="{{ url_for('staff.give_advance') }}" class="card p-3 mb-3">
+  <div class="fw-semibold mb-2">Give an advance</div>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3"><label class="form-label small">Staff *</label>
+      <select class="form-select form-select-sm" name="user_id" required>
+        <option value="">Pick…</option>
+        {% for u in staff if u.active %}<option value="{{ u.id }}">{{ u.full_name }}{% if u.staff_code %} ({{ u.staff_code }}){% endif %}{% if balances.get(u.id) %} — owes {{ balances[u.id]|inr }}{% endif %}</option>{% endfor %}
+      </select></div>
+    <div class="col-6 col-md-2"><label class="form-label small">Amount *</label>
+      <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" name="amount" required></div>
+    <div class="col-6 col-md-2"><label class="form-label small">Date</label>
+      <input class="form-control form-control-sm" type="date" name="given_on" value="{{ today.isoformat() }}"></div>
+    <div class="col-6 col-md-2"><label class="form-label small">Paid by</label>
+      <select class="form-select form-select-sm" name="method">
+        {% for m in ['cash', 'upi', 'bank'] %}<option value="{{ m }}">{{ m|upper }}</option>{% endfor %}
+      </select></div>
+    <div class="col-6 col-md-2"><label class="form-label small">Note</label>
+      <input class="form-control form-control-sm" name="note"></div>
+    <div class="col-md-1"><button class="btn btn-brand btn-sm w-100">Save</button></div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead><tr>
+        <th>Given</th><th>Staff</th><th>Paid by</th>
+        <th class="text-end">Amount</th><th class="text-end">Recovered</th><th class="text-end">Balance</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for a in rows %}
+        <tr>
+          <td class="text-nowrap">{{ a.given_on|dmy }}</td>
+          <td>{{ a.user.full_name }}{% if a.note %}<div class="small text-muted">{{ a.note }}</div>{% endif %}</td>
+          <td>{{ (a.method or '')|upper }}</td>
+          <td class="text-end">{{ a.amount|inr }}</td>
+          <td class="text-end">{{ a.recovered|inr }}
+            {% for r in a.recoveries %}<div class="small text-muted">{{ r.recovered_on|dmy }} · {{ r.amount|inr }} · {{ r.method }}</div>{% endfor %}</td>
+          <td class="text-end">{% if a.balance > 0 %}<b>{{ a.balance|inr }}</b>{% else %}<span class="status-badge success sm">cleared</span>{% endif %}</td>
+          <td class="text-end">
+            {% if a.balance > 0 %}
+            <details class="text-start">
+              <summary class="btn btn-sm btn-outline-primary">Recover</summary>
+              <form method="post" action="{{ url_for('staff.recover_advance', aid=a.id) }}" class="d-flex flex-column gap-1 mt-1" style="min-width:180px">
+                <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" max="{{ a.balance }}" name="amount" value="{{ a.balance }}">
+                <input class="form-control form-control-sm" type="date" name="recovered_on" value="{{ today.isoformat() }}">
+                <select class="form-select form-select-sm" name="method">
+                  <option value="salary">Off salary</option><option value="cash">Paid back in cash</option>
+                </select>
+                <button class="btn btn-sm btn-brand">Save</button>
+              </form>
+            </details>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted p-4">No salary advances given.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

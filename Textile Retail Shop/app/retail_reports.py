@@ -6,11 +6,10 @@ same place here. Each entry is a function returning the one shape every report i
 this shop returns — {columns, rows, totals, note} — so one page draws all of them
 and one button exports any of them.
 
-WHAT THIS DOES NOT DO IS INVENT. A report the shop has no record for (coupons,
-gift vouchers, birthdays, cash-drawer opening balances…) is still listed, so the
-menu is complete, but it is marked `unavailable` with the reason — a table of
-zeros for a thing that is never recorded would read as "nothing happened", which
-is a different and false answer.
+WHAT THIS DOES NOT DO IS INVENT. A report the shop has no record for (the stock
+marker) is still listed, so the menu is complete, but it is marked `unavailable`
+with the reason — a table of zeros for a thing that is never recorded would read
+as "nothing happened", which is a different and false answer.
 
 These are kept apart from `reports_lib.REPORTS` on purpose. That registry is also
 the ask bar's routing table, and seventy more keyword lists would change which
@@ -28,13 +27,15 @@ from sqlalchemy.orm import selectinload
 # the warehouse the shop is mounted with its package name swapped out, and an
 # `from app import …` run at request time would reach the warehouse's own `app`
 # (test_mounted.py holds this).
-from app import db, reports_lib
+from app import db, drawer, reports_lib, vouchers
 from app import warehouse_items as wi
-from app.models import (Attendance, Category, Company, Counter, CreditNote,
-                        Customer, Delivery, Invoice, InvoiceItem, InvoicePayment,
-                        Location, LocationStock, LoyaltyTxn, Product,
-                        PromotionApplication, PromotionScheme, SaleSession,
-                        StockMovement, TransferReceipt, User)
+from app.models import (Attendance, Category, Company, Counter, Coupon,
+                        CouponRedemption, CreditNote, Customer, CustomerAdvance,
+                        CustomerFeedback, Delivery, DrawerSession, Invoice,
+                        InvoiceItem, InvoicePayment, Location, LocationStock,
+                        LoyaltyTxn, Product, PromotionApplication, PromotionScheme,
+                        SaleSession, ScheduledMessage, StaffAdvance, StockMovement,
+                        TransferReceipt, User)
 
 METHODS = ("cash", "card", "upi")
 
@@ -72,7 +73,8 @@ class Ctx:
         return q
 
     def bills(self, *options):
-        q = Invoice.query.filter(func.date(Invoice.invoice_date) >= self.start,
+        q = Invoice.query.filter(Invoice.live(),
+                                 func.date(Invoice.invoice_date) >= self.start,
                                  func.date(Invoice.invoice_date) <= self.end)
         q = self._place(q, Invoice)
         if self.b2b:
@@ -85,7 +87,8 @@ class Ctx:
         """(InvoiceItem, Invoice) for every line billed in the period and place."""
         q = (db.session.query(InvoiceItem, Invoice)
              .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
-             .filter(func.date(Invoice.invoice_date) >= self.start,
+             .filter(Invoice.live(),
+                     func.date(Invoice.invoice_date) >= self.start,
                      func.date(Invoice.invoice_date) <= self.end))
         q = self._place(q, Invoice)
         if self.b2b:
@@ -723,6 +726,7 @@ def stock_shelf_period(ctx):
     arrived = _arrivals()
     last_sold = dict(db.session.query(InvoiceItem.product_id, func.max(Invoice.invoice_date))
                      .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
+                     .filter(Invoice.live())
                      .group_by(InvoiceItem.product_id).all())
     today = date.today()
     rows = []
@@ -904,6 +908,8 @@ def settlement_day_end(ctx):
         _tender_cols(_tenders(inv), d["tend"])
     for note in ctx.credit_notes().all():
         m = (note.refund_method or "cash").lower()
+        if m == "store_credit":
+            continue            # kept as credit, not handed back — no money left the till
         r = day(note.created_at.date())["refund"]
         r[m] = r.get(m, 0) + (note.total or 0)
     rows = []
@@ -917,8 +923,9 @@ def settlement_day_end(ctx):
                     "Cash in drawer", "Net"], rows,
                    {"Collected": _sum(rows, 6), "Refunds": _sum(rows, 7),
                     "Cash in drawer": _sum(rows, 8), "Net": _sum(rows, 9)},
-                   "What each day's tills took, less what was refunded. 'Cash in drawer' is "
-                   "cash taken less cash refunded — the till does not record an opening float.")
+                   "What each day's tills took, less what was refunded. 'Other' is store credit "
+                   "and advances spent on bills. 'Cash in drawer' is cash taken less cash "
+                   "refunded, without the float — the Opening/Closing report has the counts.")
 
 
 def settlement_cashier(ctx):
@@ -929,6 +936,8 @@ def settlement_cashier(ctx):
         r["bills"] += 1
         _tender_cols(_tenders(inv), r["tend"])
     for note in ctx.credit_notes().all():
+        if (note.refund_method or "") == "store_credit":
+            continue
         u = note.cashier
         agg.setdefault(u.id if u else 0, {"user": u, "bills": 0, "tend": {}, "refund": 0.0})[
             "refund"] += note.total or 0
@@ -990,7 +999,8 @@ def credit_collection(ctx):
     rows = []
     q = (db.session.query(InvoicePayment, Invoice)
          .join(Invoice, Invoice.id == InvoicePayment.invoice_id)
-         .filter(func.date(InvoicePayment.created_at) >= ctx.start,
+         .filter(Invoice.live(),
+                 func.date(InvoicePayment.created_at) >= ctx.start,
                  func.date(InvoicePayment.created_at) <= ctx.end,
                  func.date(InvoicePayment.created_at) > func.date(Invoice.invoice_date)))
     q = ctx._place(q, Invoice)
@@ -1268,7 +1278,7 @@ def employee_detail(ctx):
 # ===========================================================================
 def credit_outstanding(ctx):
     agg = OrderedDict()
-    q = Invoice.query.filter(func.date(Invoice.invoice_date) <= ctx.end,
+    q = Invoice.query.filter(Invoice.live(), func.date(Invoice.invoice_date) <= ctx.end,
                              Invoice.customer_id.isnot(None))
     q = ctx._place(q, Invoice).options(selectinload(Invoice.payments))
     for inv in q.order_by(Invoice.invoice_date).all():
@@ -1301,8 +1311,8 @@ def cn_customer(ctx):
     return _result(["Credit note", "Date", "Customer", "Phone", "Against bill", "Refunded as",
                     "Reason", "Amount"], rows,
                    {"Notes": len(rows), "Amount": _sum(rows, 7)},
-                   "Credit notes raised to customers. The shop issues no gift vouchers, so "
-                   "this lists credit notes only.")
+                   "Credit notes raised to customers, refunded as money or kept as store "
+                   "credit. The shop issues no gift vouchers, so this lists credit notes only.")
 
 
 def loyalty_consumption(ctx):
@@ -1334,14 +1344,15 @@ def my_customers(ctx):
     period = dict((cid, (n, t)) for cid, n, t in
                   db.session.query(Invoice.customer_id, func.count(Invoice.id),
                                    func.sum(Invoice.total))
-                  .filter(func.date(Invoice.invoice_date) >= ctx.start,
+                  .filter(Invoice.live(), func.date(Invoice.invoice_date) >= ctx.start,
                           func.date(Invoice.invoice_date) <= ctx.end,
                           Invoice.customer_id.isnot(None))
                   .group_by(Invoice.customer_id).all())
     life = dict((cid, (n, last)) for cid, n, last in
                 db.session.query(Invoice.customer_id, func.count(Invoice.id),
                                  func.max(Invoice.invoice_date))
-                .filter(Invoice.customer_id.isnot(None)).group_by(Invoice.customer_id).all())
+                .filter(Invoice.live(), Invoice.customer_id.isnot(None))
+                .group_by(Invoice.customer_id).all())
     rows = []
     for c in Customer.query.order_by(Customer.name).all():
         n, spent = period.get(c.id, (0, 0))
@@ -1360,9 +1371,11 @@ def inactive_customers(ctx):
     days = ctx.param("days", 90)
     cutoff = date.today() - timedelta(days=days)
     last = dict(db.session.query(Invoice.customer_id, func.max(Invoice.invoice_date))
-                .filter(Invoice.customer_id.isnot(None)).group_by(Invoice.customer_id).all())
+                .filter(Invoice.live(), Invoice.customer_id.isnot(None))
+                .group_by(Invoice.customer_id).all())
     count = dict(db.session.query(Invoice.customer_id, func.count(Invoice.id))
-                 .filter(Invoice.customer_id.isnot(None)).group_by(Invoice.customer_id).all())
+                 .filter(Invoice.live(), Invoice.customer_id.isnot(None))
+                 .group_by(Invoice.customer_id).all())
     rows = []
     for c in Customer.query.order_by(Customer.name).all():
         seen = _day(last[c.id]) if last.get(c.id) else None
@@ -1387,7 +1400,7 @@ def scheme_details(ctx):
                                  func.count(func.distinct(PromotionApplication.invoice_id)),
                                  func.sum(PromotionApplication.benefit_value))
                 .join(Invoice, Invoice.id == PromotionApplication.invoice_id)
-                .filter(func.date(Invoice.invoice_date) >= ctx.start,
+                .filter(Invoice.live(), func.date(Invoice.invoice_date) >= ctx.start,
                         func.date(Invoice.invoice_date) <= ctx.end)
                 .group_by(PromotionApplication.scheme_id).all())
     rows = []
@@ -1432,6 +1445,264 @@ def margin_target(ctx):
 
 
 # ===========================================================================
+#  CANCELLED BILLS · ADVANCES · THE DRAWER · COUPONS · STORE CREDIT
+#  · WISHES · FEEDBACK · MESSAGES
+#  Records kept by the screens added for them — see app/cancellation.py,
+#  app/vouchers.py, app/drawer.py and app/messaging.py.
+# ===========================================================================
+def sales_cancelled(ctx):
+    q = Invoice.query.filter(Invoice.payment_status == "cancelled",
+                             func.date(Invoice.invoice_date) >= ctx.start,
+                             func.date(Invoice.invoice_date) <= ctx.end)
+    q = ctx._place(q, Invoice).options(selectinload(Invoice.items))
+    rows = []
+    for inv in q.order_by(Invoice.invoice_date, Invoice.id).all():
+        rows.append([inv.invoice_number, _dt(inv.invoice_date), _dt(inv.cancelled_at),
+                     _name(inv.cancelled_by), inv.cancel_reason or "—",
+                     inv.customer.name if inv.customer else "Walk-in", _name(_served(inv)),
+                     _q(sum(i.quantity or 0 for i in inv.items)), _m(inv.total),
+                     (inv.payment_method or "").replace("_", " ").upper()])
+    return _result(["Bill", "Billed", "Cancelled", "Cancelled by", "Reason", "Customer",
+                    "Salesperson", "Qty", "Amount", "Paid by"], rows,
+                   {"Bills": len(rows), "Qty": _qsum(rows, 7), "Amount": _sum(rows, 8)},
+                   "Bills cancelled after they were raised. Their numbers stay in the series; "
+                   "their stock, points, promotions and coupons were reversed, and they are "
+                   "left out of every other sales, tax and settlement report.")
+
+
+def customer_advance(ctx):
+    q = CustomerAdvance.query.filter(func.date(CustomerAdvance.created_at) >= ctx.start,
+                                     func.date(CustomerAdvance.created_at) <= ctx.end)
+    rows = []
+    for a in ctx._place(q, CustomerAdvance).order_by(CustomerAdvance.created_at).all():
+        used = vouchers.advance_used(a)
+        rows.append([a.number, _dt(a.created_at), a.customer.name if a.customer else "—",
+                     (a.customer.phone if a.customer else "") or "—", (a.method or "").upper(),
+                     a.reference or "—", _name(a.cashier), a.note or "—", _m(a.amount), used,
+                     _m(a.refunded), vouchers.advance_balance(a)])
+    return _result(["Advance", "Taken", "Customer", "Phone", "Paid by", "Reference", "Taken by",
+                    "Note", "Amount", "Spent on bills", "Refunded", "Balance now"], rows,
+                   {"Advances": len(rows), "Amount": _sum(rows, 8), "Spent on bills": _sum(rows, 9),
+                    "Refunded": _sum(rows, 10), "Balance now": _sum(rows, 11)},
+                   "Advances taken from customers in the period, with what has been spent from "
+                   "each on bills (bills since cancelled do not count) and what was handed back.")
+
+
+def opening_closing(ctx):
+    q = DrawerSession.query.filter(func.date(DrawerSession.opened_at) >= ctx.start,
+                                   func.date(DrawerSession.opened_at) <= ctx.end)
+    rows = []
+    for s in ctx._place(q, DrawerSession).order_by(DrawerSession.opened_at).all():
+        expected = s.expected_cash if s.closed_at else drawer.breakdown(s)[0]
+        diff = s.difference
+        rows.append([s.counter.name if s.counter else "—", s.location.name if s.location else "—",
+                     _dt(s.opened_at), _name(s.opened_by), _m(s.opening_float),
+                     _dt(s.closed_at) if s.closed_at else "still open", _name(s.closed_by),
+                     _m(expected), _m(s.counted_cash) if s.counted_cash is not None else "—",
+                     diff if diff is not None else "—",
+                     "—" if diff is None else "Tallies" if abs(diff) < 0.01
+                     else "Over" if diff > 0 else "Short", s.notes or "—"])
+    return _result(["Till", "Location", "Opened", "Opened by", "Float", "Closed", "Closed by",
+                    "Expected cash", "Counted", "Difference", "Result", "Notes"], rows,
+                   {"Sessions": len(rows), "Float": _sum(rows, 4), "Counted": _sum(rows, 8),
+                    "Difference": _sum(rows, 9)},
+                   "Each drawer from the float put in to the count taken out. Expected cash is "
+                   "the float plus cash on bills and advances at that till, less cash refunds — "
+                   "fixed when the drawer is closed; for a drawer still open it is as of now.")
+
+
+def employee_advance(ctx):
+    rows = []
+    for a in (StaffAdvance.query.filter(StaffAdvance.given_on <= ctx.end)
+              .order_by(StaffAdvance.given_on, StaffAdvance.id).all()):
+        back = sum(r.amount or 0 for r in a.recoveries
+                   if not r.recovered_on or r.recovered_on <= ctx.end)
+        left = _m((a.amount or 0) - back)
+        if left <= 0.009:
+            continue
+        u = a.user
+        rows.append([_name(u), (u.staff_code if u else None) or "—", _d(a.given_on),
+                     (a.method or "").upper(), a.note or "—", _m(a.amount), _m(back), left,
+                     (ctx.end - a.given_on).days])
+    return _result(["Staff", "Code", "Given on", "Paid by", "Note", "Advance", "Recovered",
+                    "Pending", "Days pending"], rows,
+                   {"Advances": len(rows), "Advance": _sum(rows, 5), "Pending": _sum(rows, 7)},
+                   "Salary advances still not fully recovered as at the end date — the start "
+                   "date does not apply.")
+
+
+def _coupon_row_status(cp):
+    return cp.state(date.today()).capitalize()
+
+
+def settlement_coupon_issue(ctx):
+    q = (db.session.query(Coupon, Invoice).join(Invoice, Invoice.id == Coupon.issued_invoice_id)
+         .filter(Coupon.issued_via == "settlement",
+                 func.date(Invoice.invoice_date) >= ctx.start,
+                 func.date(Invoice.invoice_date) <= ctx.end))
+    rows = []
+    for cp, inv in ctx._place(q, Invoice).order_by(Invoice.invoice_date, Coupon.id).all():
+        rows.append([cp.code, cp.campaign.name, cp.campaign.describe, inv.invoice_number,
+                     _d(inv.invoice_date), _m(inv.total),
+                     inv.customer.name if inv.customer else "Walk-in", _d(cp.valid_to),
+                     cp.uses, _coupon_row_status(cp)])
+    return _result(["Coupon", "Campaign", "Offer", "Earned on bill", "Bill date", "Bill amount",
+                    "Customer", "Valid to", "Times used", "Status"], rows,
+                   {"Coupons": len(rows), "Used": sum(1 for r in rows if r[8])},
+                   "Coupons the till handed out by itself on bills in the period. A coupon from "
+                   "a bill later cancelled shows as withdrawn.")
+
+
+def coupon_issue(ctx):
+    rows = []
+    for cp in (Coupon.query.filter(func.date(Coupon.created_at) >= ctx.start,
+                                   func.date(Coupon.created_at) <= ctx.end)
+               .order_by(Coupon.created_at, Coupon.id).all()):
+        rows.append([cp.code, cp.campaign.name, cp.campaign.describe, _d(cp.created_at),
+                     "At settlement" if cp.issued_via == "settlement" else "By hand",
+                     cp.customer.name if cp.customer else "Anyone", _d(cp.valid_from),
+                     _d(cp.valid_to), cp.uses_allowed if cp.uses_allowed is not None else "Unlimited",
+                     cp.uses, _coupon_row_status(cp)])
+    return _result(["Coupon", "Campaign", "Offer", "Issued", "How", "For", "Valid from",
+                    "Valid to", "Uses allowed", "Times used", "Status"], rows,
+                   {"Coupons": len(rows), "Used": sum(1 for r in rows if r[9])},
+                   "Every coupon issued in the period, by hand or at settlement, and where it "
+                   "stands today.")
+
+
+def coupon_consumption(ctx):
+    q = (db.session.query(CouponRedemption, Invoice)
+         .join(Invoice, Invoice.id == CouponRedemption.invoice_id)
+         .filter(CouponRedemption.voided_at.is_(None), Invoice.live(),
+                 func.date(Invoice.invoice_date) >= ctx.start,
+                 func.date(Invoice.invoice_date) <= ctx.end))
+    rows = []
+    for r, inv in ctx._place(q, Invoice).order_by(Invoice.invoice_date, Invoice.id).all():
+        cp = r.coupon
+        rows.append([inv.invoice_number, _dt(inv.invoice_date),
+                     inv.customer.name if inv.customer else "Walk-in", cp.code, cp.campaign.name,
+                     _m((inv.subtotal or 0) + _tax(inv)), _m(r.amount), _m(inv.total)])
+    return _result(["Bill", "Date", "Customer", "Coupon", "Campaign", "Bill before discounts",
+                    "Coupon discount", "Bill total"], rows,
+                   {"Redemptions": len(rows), "Coupon discount": _sum(rows, 6)},
+                   "Coupons spent on bills in the period. A coupon comes off the bill as a "
+                   "discount, so it is inside the Discount column of the sales reports too. "
+                   "Bills since cancelled are left out, and their coupons can be used again.")
+
+
+def gv_cn_consumption(ctx):
+    q = (db.session.query(InvoicePayment, Invoice)
+         .join(Invoice, Invoice.id == InvoicePayment.invoice_id)
+         .filter(InvoicePayment.method == "credit_note", Invoice.live(),
+                 func.date(Invoice.invoice_date) >= ctx.start,
+                 func.date(Invoice.invoice_date) <= ctx.end))
+    pairs = ctx._place(q, Invoice).order_by(Invoice.invoice_date, InvoicePayment.id).all()
+    numbers = {p.reference for p, _ in pairs if p.reference}
+    notes = ({n.number: n for n in CreditNote.query.filter(CreditNote.number.in_(numbers)).all()}
+             if numbers else {})
+    rows = []
+    for pay, inv in pairs:
+        n = notes.get(pay.reference)
+        rows.append([inv.invoice_number, _dt(inv.invoice_date),
+                     inv.customer.name if inv.customer else "Walk-in", pay.reference or "—",
+                     _d(n.created_at) if n else "—", n.invoice.invoice_number if n else "—",
+                     _m(n.total) if n else 0.0, _m(pay.amount),
+                     vouchers.credit_note_balance(n) if n else 0.0])
+    return _result(["Bill", "Date", "Customer", "Credit note", "Note raised", "Note against bill",
+                    "Note value", "Used on this bill", "Left on note now"], rows,
+                   {"Redemptions": len(rows), "Used": _sum(rows, 7)},
+                   "Credit notes kept as store credit and spent against later bills. No gift "
+                   "vouchers are issued, so this lists credit notes only.")
+
+
+def _falls_in(day, start, end):
+    """The date in [start, end] on `day`'s day and month (29 Feb → 28 Feb), or None."""
+    for year in range(start.year, end.year + 1):
+        try:
+            d = date(year, day.month, day.day)
+        except ValueError:
+            d = date(year, 2, 28)
+        if start <= d <= end:
+            return d
+    return None
+
+
+def _wishes(ctx, kind):
+    field = "dob" if kind == "birthday" else "anniversary"
+    queued = {}
+    for m in (ScheduledMessage.query.filter(ScheduledMessage.kind == kind,
+                                            func.date(ScheduledMessage.scheduled_for) >= ctx.start,
+                                            func.date(ScheduledMessage.scheduled_for) <= ctx.end)
+              .order_by(ScheduledMessage.id).all()):
+        queued[(m.customer_id, m.scheduled_for.date())] = m.status
+    found = []
+    for c in Customer.query.filter(getattr(Customer, field).isnot(None)).all():
+        on = _falls_in(getattr(c, field), ctx.start, ctx.end)
+        if on:
+            found.append((on, c.name, c))
+    found.sort(key=lambda t: (t[0], t[1]))
+    return [[c.name, c.phone or "—", _d(getattr(c, field)), _d(on),
+             on.year - getattr(c, field).year, (on - date.today()).days,
+             (queued.get((c.id, on)) or "not queued").capitalize(), _m(c.total_spent)]
+            for on, _, c in found]
+
+
+def birthday(ctx):
+    rows = _wishes(ctx, "birthday")
+    return _result(["Customer", "Phone", "Date of birth", "Birthday", "Turning", "Days from today",
+                    "Wish", "Lifetime spend"], rows,
+                   {"Customers": len(rows), "No phone": sum(1 for r in rows if r[1] == "—")},
+                   "Customers whose birthday falls in the period. 'Wish' is the message queued "
+                   "for that day on the Messages screen, if any.")
+
+
+def anniversary(ctx):
+    rows = _wishes(ctx, "anniversary")
+    return _result(["Customer", "Phone", "Anniversary date", "Anniversary", "Years",
+                    "Days from today", "Wish", "Lifetime spend"], rows,
+                   {"Customers": len(rows), "No phone": sum(1 for r in rows if r[1] == "—")},
+                   "Customers whose wedding anniversary falls in the period. 'Wish' is the "
+                   "message queued for that day on the Messages screen, if any.")
+
+
+def feedback(ctx):
+    rows = []
+    for f in (CustomerFeedback.query.filter(func.date(CustomerFeedback.created_at) >= ctx.start,
+                                            func.date(CustomerFeedback.created_at) <= ctx.end)
+              .order_by(CustomerFeedback.created_at).all()):
+        rows.append([_dt(f.created_at), f.customer.name if f.customer else "—",
+                     (f.customer.phone if f.customer else "") or "—",
+                     f.invoice.invoice_number if f.invoice else "—", f.rating,
+                     "★" * (f.rating or 0), f.comments or "—",
+                     "Bill QR" if f.source == "link" else "At the counter", _name(f.recorded_by)])
+    ratings = [r[4] for r in rows]
+    return _result(["When", "Customer", "Phone", "Bill", "Rating", "Stars", "Comments", "From",
+                    "Recorded by"], rows,
+                   {"Responses": len(rows),
+                    "Average rating": round(sum(ratings) / len(ratings), 2) if ratings else 0,
+                    "Low (1–2 stars)": sum(1 for x in ratings if x <= 2)},
+                   "Ratings customers gave, typed in at the counter or sent from the QR code "
+                   "on their bill.")
+
+
+def scheduled_messages(ctx):
+    rows = []
+    for m in (ScheduledMessage.query.filter(func.date(ScheduledMessage.scheduled_for) >= ctx.start,
+                                            func.date(ScheduledMessage.scheduled_for) <= ctx.end)
+              .order_by(ScheduledMessage.scheduled_for, ScheduledMessage.id).all()):
+        rows.append([_dt(m.scheduled_for), m.customer.name if m.customer else "—", m.phone or "—",
+                     (m.kind or "").capitalize(), m.body, (m.status or "").capitalize(),
+                     m.attempts or 0, _dt(m.sent_at), m.error or "—"])
+    count = lambda s: sum(1 for r in rows if r[5].lower() == s)  # noqa: E731
+    return _result(["Due", "Customer", "Phone", "Kind", "Message", "Status", "Attempts",
+                    "Sent", "Note"], rows,
+                   {"Messages": len(rows), "Sent": count("sent"), "Logged": count("logged"),
+                    "Failed": count("failed"), "Queued": count("queued")},
+                   "Messages due in the period and what became of each. 'Logged' means it came "
+                   "due with no SMS/WhatsApp provider set up, so it was not sent.")
+
+
+# ===========================================================================
 #  the catalogue
 # ===========================================================================
 def _na(why, see=None):
@@ -1458,9 +1729,7 @@ GROUPS = [
         ("sales_margin", "Sales Report - Margin", sales_margin, {}),
         ("sales_invoice_wise", "Sales Report - Invoice wise", sales_invoice_wise, {}),
         ("sales_barcode", "Sales Report - Barcode wise", sales_barcode, {}),
-        ("sales_cancelled", "Sales Report - Cancelled",
-         _na("A bill cannot be cancelled at this till — a sale is reversed with a credit note, "
-             "which the Credit Note report lists.", see="cn_customer"), {}),
+        ("sales_cancelled", "Sales Report - Cancelled", sales_cancelled, {}),
         ("day_summary", "Sales Report - Day Summary (Without OffSet Bill Configuration)",
          day_summary, {}),
         ("sales_age_wise", "Sales Report - Age Wise", sales_age_wise, {}),
@@ -1505,15 +1774,10 @@ GROUPS = [
         ("settlement_detail", "Settlement Detail Report", settlement_detail, {}),
         ("company_collection", "Company wise Sale Collection Report", company_collection, {}),
         ("credit_collection", "Credit Sale Collection Report", credit_collection, {}),
-        ("customer_advance", "Customer Advance Collection Report",
-         _na("The shop takes no advances or deposits from customers, so there is nothing "
-             "recorded to report."), {}),
+        ("customer_advance", "Customer Advance Collection Report", customer_advance, {}),
         ("settlement_reconciliation", "Settlement Reconciliation", settlement_reconciliation, {}),
         ("settlement_daywise", "Daywise Settlement", settlement_daywise, {}),
-        ("opening_closing", "Opening/Closing Report",
-         _na("The till does not record a cash-drawer opening float or closing count. The Day "
-             "End Settlement Summary shows cash taken less cash refunded.",
-             see="settlement_day_end"), {}),
+        ("opening_closing", "Opening/Closing Report", opening_closing, {}),
     ]),
     ("tax", "Tax Reports", [
         ("tax_summary", "Sales Tax Report (Summary)", tax_summary, {}),
@@ -1527,8 +1791,8 @@ GROUPS = [
         ("incentive_section", "Incentive Report - Section", incentive_section, {}),
         ("incentive_employees", "Incentive Report - Employees", incentive_employees, {}),
         ("employee_detail", "Employee Detail Report", employee_detail, {"places": False}),
-        ("employee_advance", "Employee Advance Pending Report",
-         _na("Salary advances to staff are not recorded in the shop."), {}),
+        ("employee_advance", "Employee Advance Pending Report", employee_advance,
+         {"places": False}),
     ]),
     ("b2b", "Reports - B2B Vertical", [
         ("b2b_sales", "Sales Report", sales_invoice_wise, {"b2b": True}),
@@ -1539,29 +1803,20 @@ GROUPS = [
     ("customer", "Customer Reports", [
         ("credit_outstanding", "Credit Customer Outstanding Report", credit_outstanding, {}),
         ("cn_customer", "Customer Gift Voucher/Credit Note Report", cn_customer, {}),
-        ("settlement_coupon_issue", "Settlement Coupon Issue Report",
-         _na("The till issues no coupons at settlement."), {}),
-        ("coupon_issue", "Coupon Issue Report", _na("The shop issues no coupons."), {}),
-        ("coupon_consumption", "Coupon Consumption Report",
-         _na("The shop issues no coupons, so none are consumed."), {}),
-        ("gv_cn_consumption", "Gift Voucher/Credit Note Consumption Report",
-         _na("No gift vouchers are issued, and a credit note is refunded when it is raised — it "
-             "cannot yet be redeemed against a later bill, so nothing is consumed.",
-             see="cn_customer"), {}),
+        ("settlement_coupon_issue", "Settlement Coupon Issue Report", settlement_coupon_issue, {}),
+        ("coupon_issue", "Coupon Issue Report", coupon_issue, {"places": False}),
+        ("coupon_consumption", "Coupon Consumption Report", coupon_consumption, {}),
+        ("gv_cn_consumption", "Gift Voucher/Credit Note Consumption Report", gv_cn_consumption, {}),
         ("loyalty_consumption", "Loyalty Reward Consumption Report", loyalty_consumption,
          {"places": False}),
         ("gift_issue", "Gift Issue Report", gift_issue, {"places": False}),
-        ("birthday", "Birthday Wishes",
-         _na("The customer master has no date of birth to find birthdays from."), {}),
-        ("anniversary", "Anniversary Wishes",
-         _na("The customer master has no anniversary date."), {}),
+        ("birthday", "Birthday Wishes", birthday, {"places": False}),
+        ("anniversary", "Anniversary Wishes", anniversary, {"places": False}),
         ("my_customers", "My Customers Report", my_customers, {"places": False}),
-        ("feedback", "Customer Feedback Report",
-         _na("Customer feedback is not collected in the shop."), {}),
+        ("feedback", "Customer Feedback Report", feedback, {"places": False}),
         ("inactive_customers", "Inactive Customer Report", inactive_customers,
          {"dated": False, "places": False}),
-        ("scheduled_messages", "Scheduled Message Log",
-         _na("The shop sends no scheduled SMS or WhatsApp messages."), {}),
+        ("scheduled_messages", "Scheduled Message Log", scheduled_messages, {"places": False}),
     ]),
     ("mobile", "Reports - Mobile Vertical", [
         ("scheme_details", "Scheme Details Report", scheme_details, {"places": False}),

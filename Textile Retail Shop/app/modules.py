@@ -16,7 +16,7 @@ MODULES = [
      "blurb": "Build a sale on the phone while walking the floor"},
 
     {"key": "counter", "endpoint": "pos.counter", "icon": "bi-cart-check",
-     "label": "Billing Counter", "owns": ["pos.counter", "pos.checkout"], "manager": False,
+     "label": "Billing Counter", "owns": ["pos.counter", "pos.checkout", "drawer."], "manager": False,
      "blurb": "Scan, bill and take payment at the counter"},
 
     {"key": "delivery", "endpoint": "delivery.index", "icon": "bi-bag-check",
@@ -57,7 +57,7 @@ MODULES = [
      "blurb": "Which storey each till bills from, and what its bills are called"},
 
     {"key": "promotions", "endpoint": "promotions.index", "icon": "bi-gift",
-     "label": "Promotions", "owns": ["promotions."], "manager": True,
+     "label": "Promotions", "owns": ["promotions.", "coupons."], "manager": True,
      "blurb": "Offers the till applies by itself, and what they have given away"},
 
     {"key": "staff", "endpoint": "staff.list_staff", "icon": "bi-person-badge",

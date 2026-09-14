@@ -162,7 +162,8 @@ with app.app_context():
     check("group sizes, in menu order",
           [len(g["reports"]) for g in cat], [17, 4, 8, 2, 9, 6, 4, 4, 14, 1, 1])
     unavailable = [r["key"] for g in cat for r in g["reports"] if r["unavailable"]]
-    check("thirteen are honest about having nothing recorded", len(unavailable), 13)
+    check("only the stock marker is honest about having nothing recorded",
+          unavailable, ["stock_marker"])
     ok("and each says why", all(rr.REPORTS[k]["unavailable"].strip() for k in unavailable))
     ok("a 'see instead' always points at a real, runnable report",
        all(rr.REPORTS[r["see"]]["run"] for g in cat for r in g["reports"] if r.get("see")))
@@ -289,9 +290,9 @@ for key, spec in rr.REPORTS.items():
                 or spec["label"] not in e.get_data(as_text=True)):
             csv_bad.append((key, e.status_code))
 check("all 70 report pages open", pages_bad, [])
-check("all 57 exports download", csv_bad, [])
+check("all 69 exports download", csv_bad, [])
 ok("an unavailable report says why",
-   "no date of birth" in client.get("/reports/r/birthday").get_data(as_text=True))
+   "no stock-marker record" in client.get("/reports/r/stock_marker").get_data(as_text=True))
 check("an unknown report is a 404", client.get("/reports/r/nonsense").status_code, 404)
 
 print("\n" + "=" * 60)

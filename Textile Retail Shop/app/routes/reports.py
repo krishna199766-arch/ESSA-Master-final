@@ -72,7 +72,7 @@ def index():
     start, end = parse_range()
     where, chosen = parse_places()
     q = db.session.query(Invoice).filter(
-        func.date(Invoice.invoice_date) >= start,
+        Invoice.live(), func.date(Invoice.invoice_date) >= start,
         func.date(Invoice.invoice_date) <= end,
         *where,
     )
@@ -108,7 +108,7 @@ def index():
     ).join(InvoiceItem, InvoiceItem.product_id == Product.id
     ).join(Invoice, Invoice.id == InvoiceItem.invoice_id
     ).filter(
-        func.date(Invoice.invoice_date) >= start,
+        Invoice.live(), func.date(Invoice.invoice_date) >= start,
         func.date(Invoice.invoice_date) <= end,
         *where,
     ).group_by(Product.id).order_by(func.sum(InvoiceItem.line_total + InvoiceItem.tax_amount).desc()).limit(10).all()
@@ -145,7 +145,7 @@ def index():
         Customer.name, func.count(Invoice.id), func.sum(Invoice.total)
     ).join(Invoice, Invoice.customer_id == Customer.id
     ).filter(
-        func.date(Invoice.invoice_date) >= start,
+        Invoice.live(), func.date(Invoice.invoice_date) >= start,
         func.date(Invoice.invoice_date) <= end,
         *where,
     ).group_by(Customer.id).order_by(func.sum(Invoice.total).desc()).limit(10).all()
@@ -158,7 +158,7 @@ def index():
                                  func.count(Invoice.id),
                                  func.coalesce(func.sum(Invoice.total), 0))
                 .join(join_model, join_on)
-                .filter(func.date(Invoice.invoice_date) >= start,
+                .filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
                         func.date(Invoice.invoice_date) <= end, *where)
                 .group_by(label_col)
                 .order_by(func.coalesce(func.sum(Invoice.total), 0).desc()).all())
@@ -174,7 +174,7 @@ def index():
                                      func.count(Invoice.id),
                                      func.coalesce(func.sum(Invoice.total), 0))
                     .join(Location, Location.id == Invoice.location_id)
-                    .filter(func.date(Invoice.invoice_date) >= start,
+                    .filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
                             func.date(Invoice.invoice_date) <= end, *where)
                     .group_by(func.date(Invoice.invoice_date), Location.name)
                     .order_by(func.date(Invoice.invoice_date).desc(),

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h4><i class="bi bi-ticket-perforated"></i> Coupons</h4>
+  <a href="{{ url_for('promotions.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-gift"></i> Promotion schemes</a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-5">
+    <form method="post" action="{{ url_for('coupons.create_campaign') }}" class="card p-3 h-100">
+      <div class="fw-semibold mb-2">New campaign</div>
+      <div class="row g-2">
+        <div class="col-12"><label class="form-label small">Name *</label>
+          <input class="form-control form-control-sm" name="name" required placeholder="e.g. Come back soon"></div>
+        <div class="col-6"><label class="form-label small">Worth</label>
+          <select class="form-select form-select-sm" name="kind" id="cpKind">
+            <option value="amount">₹ off</option><option value="percent">% off</option>
+          </select></div>
+        <div class="col-6"><label class="form-label small">Value *</label>
+          <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" name="value" required></div>
+        <div class="col-6"><label class="form-label small">Minimum bill</label>
+          <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="min_bill" value="0"></div>
+        <div class="col-6" id="cpCap"><label class="form-label small">Most it takes off (₹)</label>
+          <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="max_discount" placeholder="no cap"></div>
+        <div class="col-6"><label class="form-label small">Good for (days)</label>
+          <input class="form-control form-control-sm" type="number" min="1" name="valid_days" value="30"></div>
+        <div class="col-6"><label class="form-label small">Uses per coupon</label>
+          <input class="form-control form-control-sm" type="number" min="0" name="uses_per_coupon" value="1">
+          <div class="form-text">0 = no limit</div></div>
+        <div class="col-12">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="issue_at_settlement" id="cpSettle">
+            <label class="form-check-label small" for="cpSettle">Hand one out on every bill of at least…</label>
+          </div>
+          <input class="form-control form-control-sm mt-1" type="number" step="0.01" min="0" name="settlement_min_bill" value="0">
+          <div class="form-text">The till prints the new code on the bill, for the customer's next visit.</div>
+        </div>
+        <div class="col-12"><button class="btn btn-brand btn-sm">Create campaign</button></div>
+      </div>
+    </form>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card mb-3">
+      <div class="card-header">Campaigns</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead><tr><th>Name</th><th>Offer</th><th>Rules</th><th class="text-end">Coupons</th><th></th></tr></thead>
+          <tbody>
+            {% for c in campaigns %}
+            <tr class="{{ 'text-muted' if not c.active }}">
+              <td>{{ c.name }}{% if not c.active %} <span class="status-badge neutral sm">off</span>{% endif %}</td>
+              <td class="small">{{ c.describe }}</td>
+              <td class="small">{{ c.valid_days }} days · {{ c.uses_per_coupon ~ ' use' ~ ('s' if c.uses_per_coupon != 1 else '') if c.uses_per_coupon else 'unlimited uses' }}
+                {% if c.issue_at_settlement %}<br><span class="status-badge info sm">auto on bills ≥ ₹{{ '%g'|format(c.settlement_min_bill or 0) }}</span>{% endif %}</td>
+              <td class="text-end">{{ c.coupons|length }}</td>
+              <td class="text-end">
+                <form method="post" action="{{ url_for('coupons.toggle_campaign', cid=c.id) }}">
+                  <button class="btn btn-sm btn-outline-secondary" title="{{ 'Switch off' if c.active else 'Switch on' }}">
+                    <i class="bi bi-{{ 'pause' if c.active else 'play' }}"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted p-3">No campaigns yet — create one to start issuing coupons.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% if campaigns|selectattr('active')|list %}
+    <form method="post" action="{{ url_for('coupons.issue') }}" class="card p-3">
+      <div class="fw-semibold mb-2">Issue coupons</div>
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4"><label class="form-label small">Campaign *</label>
+          <select class="form-select form-select-sm" name="campaign_id" required>
+            {% for c in campaigns if c.active %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          </select></div>
+        <div class="col-4 col-md-2"><label class="form-label small">How many</label>
+          <input class="form-control form-control-sm" type="number" min="1" max="500" name="count" value="1"></div>
+        <div class="col-8 col-md-3"><label class="form-label small">For customer</label>
+          <input class="form-control form-control-sm" name="customer" placeholder="phone — blank = anyone"></div>
+        <div class="col-8 col-md-2"><label class="form-label small">Own code</label>
+          <input class="form-control form-control-sm text-uppercase" name="code" placeholder="auto"></div>
+        <div class="col-4 col-md-1"><button class="btn btn-brand btn-sm w-100">Issue</button></div>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+  <div class="fw-semibold">Issued coupons</div>
+  <form class="d-flex gap-2" style="max-width:340px">
+    <input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Code, customer name or phone">
+    <button class="btn btn-outline-primary btn-sm">Search</button>
+  </form>
+</div>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead><tr>
+        <th>Code</th><th>Campaign</th><th>Customer</th><th>Valid</th><th>Issued</th>
+        <th class="text-end">Uses</th><th class="text-end">Discount given</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for cp in coupons %}
+        {% set used = cp.uses %}
+        {% set state = cp.state(today) %}
+        {% set css = {'valid': 'success', 'used': 'info'}.get(state, 'neutral') %}
+        <tr>
+          <td><code class="fs-6">{{ cp.code }}</code></td>
+          <td class="small">{{ cp.campaign.name }}</td>
+          <td class="small">{% if cp.customer %}<a href="{{ url_for('customers.view_customer', cid=cp.customer_id) }}">{{ cp.customer.name }}</a>{% else %}<span class="text-muted">anyone</span>{% endif %}</td>
+          <td class="small text-nowrap">{{ cp.valid_from|dmy }}<br>to {{ cp.valid_to|dmy or 'open' }}</td>
+          <td class="small">{% if cp.issued_via == 'settlement' and cp.issued_invoice %}on bill <a href="{{ url_for('pos.view_invoice', iid=cp.issued_invoice_id) }}">{{ cp.issued_invoice.invoice_number }}</a>{% else %}by hand{% endif %}</td>
+          <td class="text-end">{{ used }}{% if cp.uses_allowed %} / {{ cp.uses_allowed }}{% endif %}</td>
+          <td class="text-end">{{ spent.get(cp.id, 0)|inr }}</td>
+          <td><span class="status-badge {{ css }} sm">{{ state }}</span></td>
+          <td class="text-end">
+            {% if state == 'valid' %}
+            <form method="post" action="{{ url_for('coupons.withdraw', cid=cp.id) }}" onsubmit="return confirm('Withdraw {{ cp.code }}? It can no longer be used.')">
+              <button class="btn btn-sm btn-outline-danger" title="Withdraw"><i class="bi bi-x-lg"></i></button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center text-muted p-4">No coupons{{ ' match' if q else ' issued yet' }}.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const kind = document.getElementById('cpKind'), cap = document.getElementById('cpCap');
+    const sync = () => { cap.hidden = kind.value !== 'percent'; };
+    kind.addEventListener('change', sync); sync();
+  })();
+</script>
+{% endblock %}

@@ -23,7 +23,7 @@ from app.models import (Alteration, CreditNote, Category, Counter, Customer,
 
 def _inv_in(start, end):
     return db.session.query(Invoice).filter(
-        func.date(Invoice.invoice_date) >= start,
+        Invoice.live(), func.date(Invoice.invoice_date) >= start,
         func.date(Invoice.invoice_date) <= end)
 
 
@@ -38,7 +38,7 @@ def sales_summary(start, end):
     for d, n, amt, tax in db.session.query(
             func.date(Invoice.invoice_date), func.count(Invoice.id),
             func.sum(Invoice.total), func.sum(Invoice.cgst + Invoice.sgst + Invoice.igst)
-    ).filter(func.date(Invoice.invoice_date) >= start,
+    ).filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
              func.date(Invoice.invoice_date) <= end
              ).group_by(func.date(Invoice.invoice_date)).order_by(func.date(Invoice.invoice_date)).all():
         rows.append([d, n, _money(amt), _money(tax)])
@@ -55,7 +55,7 @@ def sales_by_product(start, end):
         func.sum(InvoiceItem.line_total + InvoiceItem.tax_amount)
     ).join(InvoiceItem, InvoiceItem.product_id == Product.id
            ).join(Invoice, Invoice.id == InvoiceItem.invoice_id
-                  ).filter(func.date(Invoice.invoice_date) >= start,
+                  ).filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
                            func.date(Invoice.invoice_date) <= end
                            ).group_by(Product.id).order_by(func.sum(
                                InvoiceItem.line_total + InvoiceItem.tax_amount).desc()).all()
@@ -72,7 +72,7 @@ def sales_by_category(start, end):
     ).join(Product, Product.category_id == Category.id
            ).join(InvoiceItem, InvoiceItem.product_id == Product.id
                   ).join(Invoice, Invoice.id == InvoiceItem.invoice_id
-                         ).filter(func.date(Invoice.invoice_date) >= start,
+                         ).filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
                                   func.date(Invoice.invoice_date) <= end
                                   ).group_by(Category.id).order_by(func.sum(
                                       InvoiceItem.line_total + InvoiceItem.tax_amount).desc()).all()
@@ -88,7 +88,7 @@ def sales_by_staff(start, end):
         served = db.or_(Invoice.staff_id == u.id,
                         db.and_(Invoice.staff_id.is_(None), Invoice.cashier_id == u.id))
         sold = db.session.query(func.coalesce(func.sum(Invoice.total), 0)).filter(
-            served, func.date(Invoice.invoice_date) >= start,
+            served, Invoice.live(), func.date(Invoice.invoice_date) >= start,
             func.date(Invoice.invoice_date) <= end).scalar() or 0
         back = db.session.query(func.coalesce(func.sum(CreditNote.total), 0)).join(
             Invoice, CreditNote.invoice_id == Invoice.id).filter(
@@ -111,7 +111,7 @@ def sales_by_customer(start, end):
     rows = db.session.query(
         Customer.name, Customer.phone, func.count(Invoice.id), func.sum(Invoice.total)
     ).join(Invoice, Invoice.customer_id == Customer.id
-           ).filter(func.date(Invoice.invoice_date) >= start,
+           ).filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
                     func.date(Invoice.invoice_date) <= end
                     ).group_by(Customer.id).order_by(func.sum(Invoice.total).desc()).all()
     out = [[n, p or "—", c, _money(t)] for n, p, c, t in rows]
@@ -265,7 +265,7 @@ def commission_report(start, end):
 def _promo_apps(start, end):
     return (db.session.query(PromotionApplication)
             .join(Invoice, Invoice.id == PromotionApplication.invoice_id)
-            .filter(func.date(Invoice.invoice_date) >= start,
+            .filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
                     func.date(Invoice.invoice_date) <= end))
 
 
@@ -276,7 +276,7 @@ def _reward_lines(start, end):
                   PromotionApplication.id == InvoiceItem.promo_application_id)
             .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
             .filter(InvoiceItem.promo_role == "reward",
-                    func.date(Invoice.invoice_date) >= start,
+                    Invoice.live(), func.date(Invoice.invoice_date) >= start,
                     func.date(Invoice.invoice_date) <= end))
 
 
@@ -299,7 +299,7 @@ def promotion_schemes(start, end):
         func.sum(PromotionApplication.reward_qty),
         func.sum(PromotionApplication.benefit_value))
         .join(Invoice, Invoice.id == PromotionApplication.invoice_id)
-        .filter(func.date(Invoice.invoice_date) >= start,
+        .filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
                 func.date(Invoice.invoice_date) <= end)
         .group_by(PromotionApplication.scheme_code,
                   PromotionApplication.scheme_name)
@@ -372,7 +372,7 @@ def promotion_places(start, end):
         .join(Invoice, Invoice.id == PromotionApplication.invoice_id)
         .outerjoin(Location, Location.id == Invoice.location_id)
         .outerjoin(Counter, Counter.id == Invoice.counter_id)
-        .filter(func.date(Invoice.invoice_date) >= start,
+        .filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
                 func.date(Invoice.invoice_date) <= end)
         .group_by(Location.name, Counter.name)
         .order_by(func.sum(PromotionApplication.benefit_value).desc()).all())
@@ -397,7 +397,7 @@ def promotion_daily(start, end):
         func.sum(PromotionApplication.benefit_value))
         .join(PromotionApplication,
               PromotionApplication.invoice_id == Invoice.id)
-        .filter(func.date(Invoice.invoice_date) >= start,
+        .filter(Invoice.live(), func.date(Invoice.invoice_date) >= start,
                 func.date(Invoice.invoice_date) <= end)
         .group_by(func.date(Invoice.invoice_date))
         .order_by(func.date(Invoice.invoice_date)).all())

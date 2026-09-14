@@ -90,8 +90,17 @@ with app.app_context():
     db.session.commit()
     audit = audit_svc.open_audit(storey, user_id=admin.id)
 
+    # An advance, so its receipt has something to print.
+    from app.models import CustomerAdvance
+    adv = CustomerAdvance(number="ADV-000001", customer_id=cust.id, amount=500.0,
+                          cashier_id=admin.id)
+    db.session.add(adv)
+    db.session.commit()
+    from itsdangerous import URLSafeSerializer
+    token = URLSafeSerializer(app.config["SECRET_KEY"], salt="feedback").dumps(inv.id)
+
     ids = {"loc": loc.id, "till": till.id, "inv": inv.id, "prod": prod.id,
-           "audit": audit.id}
+           "audit": audit.id, "cust": cust.id, "adv": adv.id, "token": token}
 
 client = app.test_client()
 client.post("/login", data={"username": "admin", "password": "x"},
@@ -167,8 +176,34 @@ CHECKS = [
     ("GET", "/reports/r/price_changer", None),
     ("GET", "/reports/r/text_day_summary", None),
     ("GET", "/reports/r/birthday", None),
+    ("GET", "/reports/r/opening_closing", None),
+    ("GET", "/reports/r/coupon_consumption", None),
+    ("GET", "/reports/r/gv_cn_consumption", None),
+    ("GET", "/reports/r/employee_advance", None),
+    ("GET", "/reports/r/sales_cancelled", None),
     ("GET", "/reports/low-stock", None),
     ("POST", "/reports/ask", {"q": "what did we sell last month"}),
+    # bill cancellation, coupons, store credit and advances at the counter
+    ("GET", "/pos/api/coupon?code=NOPE&amount=100", None),
+    ("GET", "/pos/api/credit-note?code=CN-NOPE", None),
+    ("GET", f"/pos/api/advance-balance?customer_id={ids['cust']}", None),
+    ("POST", f"/pos/invoice/{ids['inv']}/cancel", {}),
+    ("GET", "/pos/invoices?status=all", None),
+    ("GET", "/coupons/", None),
+    ("POST", "/coupons/campaigns", {}),
+    ("GET", "/drawer/", None),
+    ("POST", "/drawer/open", {}),
+    # customers: dates, advances, feedback, messages
+    ("GET", "/customers/new", None),
+    ("GET", f"/customers/{ids['cust']}", None),
+    ("GET", "/customers/advances", None),
+    ("GET", f"/customers/advances/{ids['adv']}", None),
+    ("GET", "/customers/feedback", None),
+    ("GET", "/customers/messages", None),
+    ("POST", "/customers/messages/wishes", {}),
+    ("POST", "/customers/messages/send", {}),
+    ("GET", f"/feedback/{ids['token']}", None),
+    ("GET", "/staff/advances", None),
 ]
 
 try:

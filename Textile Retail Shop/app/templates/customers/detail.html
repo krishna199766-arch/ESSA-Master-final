@@ -19,9 +19,10 @@
 </div>
 
 <div class="row g-3 mb-3">
-  <div class="col-md-4"><div class="stat-card card p-3 t-adjust"><div class="label">Loyalty balance</div><div class="value">{{ '%.0f' % customer.loyalty_points }} pts</div></div></div>
-  <div class="col-md-4"><div class="stat-card card p-3 t-money"><div class="label">Total spent</div><div class="value">{{ customer.total_spent|inr }}</div></div></div>
-  <div class="col-md-4"><div class="stat-card card p-3 t-count"><div class="label">Invoices</div><div class="value">{{ invoices|length }}</div></div></div>
+  <div class="col-6 col-md-3"><div class="stat-card card p-3 t-adjust"><div class="label">Loyalty balance</div><div class="value">{{ '%.0f' % customer.loyalty_points }} pts</div></div></div>
+  <div class="col-6 col-md-3"><div class="stat-card card p-3 t-money"><div class="label">Total spent</div><div class="value">{{ customer.total_spent|inr }}</div></div></div>
+  <div class="col-6 col-md-3"><div class="stat-card card p-3 t-count"><div class="label">Invoices</div><div class="value">{{ invoices|length }}</div></div></div>
+  <div class="col-6 col-md-3"><div class="stat-card card p-3 t-stock"><div class="label">Advance in hand</div><div class="value">{{ advance_balance|inr }}</div></div></div>
 </div>
 
 <div class="card mb-3">
@@ -31,10 +32,12 @@
     <div>Email: {{ customer.email or '-' }}</div>
     <div>Address: {{ customer.address or '-' }}</div>
     <div>GSTIN: {{ customer.gstin or '-' }} (State {{ customer.state_code }})</div>
+    <div>Date of birth: {{ customer.dob|dmy or '-' }}</div>
+    <div>Anniversary: {{ customer.anniversary|dmy or '-' }}</div>
   </div>
 </div>
 
-<div class="row g-3">
+<div class="row g-3 mb-3">
   <div class="col-md-7">
     <div class="card">
       <div class="card-header">Purchase history</div>
@@ -43,9 +46,10 @@
         <tbody>
           {% for i in invoices %}
           <tr>
-            <td><a href="{{ url_for('pos.view_invoice', iid=i.id) }}">{{ i.invoice_number }}</a></td>
+            <td><a href="{{ url_for('pos.view_invoice', iid=i.id) }}">{{ i.invoice_number }}</a>
+              {% if i.is_cancelled %}<span class="status-badge danger sm">cancelled</span>{% endif %}</td>
             <td>{{ i.invoice_date.strftime('%d %b %Y') }}</td>
-            <td class="text-end">{{ i.total|inr }}</td>
+            <td class="text-end {{ 'text-muted text-decoration-line-through' if i.is_cancelled }}">{{ i.total|inr }}</td>
           </tr>
           {% else %}
           <tr><td colspan="3" class="text-center text-muted">No purchases yet.</td></tr>
@@ -71,6 +75,81 @@
           {% endfor %}
         </tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  {# Advances: money left with the shop before a bill. It is spent at the counter
+     as the "Advance" tender, and what is left is worked out from those bills. #}
+  <div class="col-md-7">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Advances</span>
+        <span class="small text-muted">Balance {{ advance_balance|inr }}</span>
+      </div>
+      <form method="post" action="{{ url_for('customers.take_advance', cid=customer.id) }}"
+            class="card-body border-bottom row g-2 align-items-end">
+        <div class="col-6 col-md-3"><label class="form-label small">Amount *</label>
+          <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" name="amount" required></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Paid by</label>
+          <select class="form-select form-select-sm" name="method">
+            {% for m in methods %}<option value="{{ m }}">{{ m|upper }}</option>{% endfor %}
+          </select></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Reference</label>
+          <input class="form-control form-control-sm" name="reference" placeholder="UPI / card ref"></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Note</label>
+          <input class="form-control form-control-sm" name="note" placeholder="e.g. order deposit"></div>
+        <div class="col-12"><button class="btn btn-brand btn-sm"><i class="bi bi-wallet2"></i> Take advance</button></div>
+      </form>
+      <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead><tr><th>Number</th><th>Date</th><th class="text-end">Amount</th><th class="text-end">Left</th><th></th></tr></thead>
+        <tbody>
+          {% for a, left in advances %}
+          <tr>
+            <td><code>{{ a.number }}</code></td>
+            <td>{{ a.created_at|dmy }}</td>
+            <td class="text-end">{{ a.amount|inr }}</td>
+            <td class="text-end">{% if left > 0 %}<b>{{ left|inr }}</b>{% else %}<span class="text-muted">used up</span>{% endif %}</td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('customers.advance_receipt', aid=a.id) }}" title="Receipt"><i class="bi bi-receipt"></i></a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted">No advances taken.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-5">
+    <div class="card">
+      <div class="card-header">Feedback</div>
+      <form method="post" action="{{ url_for('customers.feedback') }}" class="card-body border-bottom">
+        <input type="hidden" name="customer_id" value="{{ customer.id }}">
+        <input type="hidden" name="next" value="{{ url_for('customers.view_customer', cid=customer.id) }}">
+        <div class="d-flex gap-2 align-items-center mb-2">
+          <select class="form-select form-select-sm" name="rating" required style="max-width:140px">
+            <option value="">Rating…</option>
+            {% for r in [5,4,3,2,1] %}<option value="{{ r }}">{{ '★' * r }}</option>{% endfor %}
+          </select>
+          <input class="form-control form-control-sm" name="invoice" placeholder="Bill no. (optional)">
+        </div>
+        <textarea class="form-control form-control-sm mb-2" name="comments" rows="2" placeholder="What did they say?"></textarea>
+        <button class="btn btn-outline-primary btn-sm">Record feedback</button>
+      </form>
+      <ul class="list-group list-group-flush">
+        {% for f in feedback %}
+        <li class="list-group-item small">
+          <span class="text-warning">{{ '★' * f.rating }}</span><span class="text-muted">{{ '★' * (5 - f.rating) }}</span>
+          <span class="text-muted ms-1">{{ f.created_at|dmy }}{% if f.invoice %} · {{ f.invoice.invoice_number }}{% endif %} · {{ f.source }}</span>
+          {% if f.comments %}<div>{{ f.comments }}</div>{% endif %}
+        </li>
+        {% else %}
+        <li class="list-group-item text-center text-muted small">No feedback yet.</li>
+        {% endfor %}
+      </ul>
     </div>
   </div>
 </div>

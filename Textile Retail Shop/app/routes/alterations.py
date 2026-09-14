@@ -42,6 +42,10 @@ def index():
             invoice = Invoice.query.get(int(q))
         if not invoice:
             flash(f"No invoice matches '{q}'.", "warning")
+        elif invoice.is_cancelled:
+            flash(f"{invoice.invoice_number} was cancelled — its garments are back in stock.",
+                  "warning")
+            invoice = None
 
     open_jobs = Alteration.query.filter(Alteration.status.in_(OPEN_STATES)) \
         .order_by(Alteration.promised_date.is_(None), Alteration.promised_date).all()
@@ -55,6 +59,9 @@ def index():
 def create():
     invoice_id = request.form.get("invoice_id", type=int)
     inv = Invoice.query.get_or_404(invoice_id)
+    if inv.is_cancelled:
+        flash(f"{inv.invoice_number} was cancelled — it cannot go for alteration.", "danger")
+        return redirect(url_for("alterations.index"))
 
     staff = resolve_staff(request.form.get("staff_code"))
     if staff is None:

@@ -162,6 +162,9 @@ def create_app(config_class=Config):
     from app.routes.promotions import promotions_bp
     from app.routes.stores import stores_bp
     from app.routes.audits import audits_bp
+    from app.routes.coupons import coupons_bp
+    from app.routes.drawer import drawer_bp
+    from app.routes.feedback import feedback_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
@@ -178,6 +181,10 @@ def create_app(config_class=Config):
     app.register_blueprint(promotions_bp, url_prefix="/promotions")
     app.register_blueprint(stores_bp, url_prefix="/stores")
     app.register_blueprint(audits_bp, url_prefix="/audits")
+    app.register_blueprint(coupons_bp, url_prefix="/coupons")
+    app.register_blueprint(drawer_bp, url_prefix="/drawer")
+    # The customer's own feedback page: no login, reached from the QR on a bill.
+    app.register_blueprint(feedback_bp, url_prefix="/feedback")
 
     # A product detailed and posted from the warehouse's mobile app should be in
     # the shop by the time anyone looks, without a restart or a button. Checking

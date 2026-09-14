@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h4><i class="bi bi-chat-dots"></i> Scheduled messages</h4>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('customers.list_customers') }}" class="btn btn-outline-secondary btn-sm">Customers</a>
+    <form method="post" action="{{ url_for('customers.send_messages') }}">
+      <button class="btn btn-brand btn-sm"><i class="bi bi-send"></i> Send due messages</button>
+    </form>
+  </div>
+</div>
+
+{% if not provider %}
+<div class="alert alert-warning small">
+  <i class="bi bi-exclamation-triangle"></i>
+  <b>No SMS or WhatsApp provider is set up.</b> Messages can be written and scheduled,
+  but when they come due they are only <b>logged</b> — nothing is sent to the customer.
+  Set <code>MESSAGE_WEBHOOK_URL</code> (and <code>MESSAGE_WEBHOOK_TOKEN</code> if the
+  gateway needs one) to start sending.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Coming up in the next 7 days</div>
+      <div class="card-body">
+        <div class="row">
+          {% for title, items, icon in [('Birthdays', birthdays, 'cake2'), ('Anniversaries', anniversaries, 'heart')] %}
+          <div class="col-6">
+            <div class="small fw-semibold mb-1"><i class="bi bi-{{ icon }}"></i> {{ title }}</div>
+            <ul class="list-unstyled small mb-0">
+              {% for c, when in items %}
+              <li><a href="{{ url_for('customers.view_customer', cid=c.id) }}">{{ c.name }}</a>
+                <span class="text-muted">· {{ when.strftime('%d %b') }}</span>
+                {% if not c.phone %}<span class="text-danger" title="No phone number">· no phone</span>{% endif %}</li>
+              {% else %}
+              <li class="text-muted">None</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endfor %}
+        </div>
+        <form method="post" action="{{ url_for('customers.queue_wishes') }}" class="d-flex gap-2 align-items-center mt-3">
+          <span class="small">Queue wishes for the next</span>
+          <input class="form-control form-control-sm" type="number" name="days" value="7" min="0" max="60" style="width:70px">
+          <span class="small">days</span>
+          <button class="btn btn-outline-primary btn-sm ms-auto">Queue wishes</button>
+        </form>
+        <p class="small text-muted mt-2 mb-0">Each wish is set for 9 am on the day. A wish already
+          queued for that customer and day is not queued twice.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <form method="post" action="{{ url_for('customers.new_message') }}" class="card h-100">
+      <div class="card-header">New message</div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-md-4"><label class="form-label small">To</label>
+            <select class="form-select form-select-sm" name="to" id="msgTo">
+              <option value="one">One customer</option>
+              <option value="all">Every customer with a phone</option>
+            </select></div>
+          <div class="col-md-4" id="msgPhone"><label class="form-label small">Phone</label>
+            <input class="form-control form-control-sm" name="phone"></div>
+          <div class="col-md-4"><label class="form-label small">Kind</label>
+            <select class="form-select form-select-sm" name="kind">
+              {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == 'offer' }}>{{ k|capitalize }}</option>{% endfor %}
+            </select></div>
+          <div class="col-12"><label class="form-label small">Message *</label>
+            <textarea class="form-control form-control-sm" name="body" rows="3" required
+                      placeholder="Hi {name}, our festive sale starts Friday at {shop}."></textarea>
+            <div class="form-text"><code>{name}</code> and <code>{shop}</code> are filled in for each customer.</div></div>
+          <div class="col-md-6"><label class="form-label small">Send at</label>
+            <input class="form-control form-control-sm" type="datetime-local" name="when">
+            <div class="form-text">Blank = as soon as messages are next sent.</div></div>
+          <div class="col-md-6 d-flex align-items-end"><button class="btn btn-brand btn-sm ms-auto">Queue message</button></div>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="d-flex gap-2 flex-wrap mb-2">
+  {% for key, label in [('', 'All'), ('queued', 'Queued'), ('sent', 'Sent'), ('logged', 'Logged'), ('failed', 'Failed'), ('cancelled', 'Cancelled')] %}
+  <a class="btn btn-sm {% if status == key %}btn-brand{% else %}btn-outline-secondary{% endif %}"
+     href="{{ url_for('customers.messages', status=key) }}">
+    {{ label }} <span class="badge text-bg-light">{{ counts.values()|sum if not key else counts.get(key, 0) }}</span></a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead><tr><th>Due</th><th>To</th><th>Kind</th><th>Message</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for m in rows %}
+        <tr>
+          <td class="text-nowrap small">{{ m.scheduled_for.strftime('%d-%m-%Y %H:%M') if m.scheduled_for }}</td>
+          <td class="small">{% if m.customer %}<a href="{{ url_for('customers.view_customer', cid=m.customer_id) }}">{{ m.customer.name }}</a><br>{% endif %}
+            <span class="text-muted">{{ m.phone or 'no phone' }}</span></td>
+          <td class="small">{{ m.kind }}</td>
+          <td class="small" style="max-width:380px">{{ m.body }}</td>
+          <td>
+            <span class="status-badge sm {{ {'sent':'success','queued':'pending','logged':'info','failed':'danger','cancelled':'neutral'}.get(m.status, 'neutral') }}">{{ m.status }}</span>
+            {% if m.error %}<div class="small text-muted">{{ m.error }}</div>{% endif %}
+            {% if m.sent_at %}<div class="small text-muted">{{ m.sent_at.strftime('%d-%m %H:%M') }}</div>{% endif %}
+          </td>
+          <td class="text-end">
+            {% if m.status == 'queued' %}
+            <form method="post" action="{{ url_for('customers.cancel_message', mid=m.id) }}">
+              <button class="btn btn-sm btn-outline-danger" title="Cancel"><i class="bi bi-x-lg"></i></button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted p-4">No messages{{ ' with this status' if status }}.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const to = document.getElementById('msgTo'), phone = document.getElementById('msgPhone');
+    const sync = () => { phone.hidden = to.value === 'all'; };
+    to.addEventListener('change', sync); sync();
+    to.form.addEventListener('submit', (e) => {
+      if (to.value === 'all' && !confirm('Queue this message for every customer with a phone number?')) e.preventDefault();
+    });
+  })();
+</script>
+{% endblock %}

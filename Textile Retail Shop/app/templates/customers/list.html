@@ -2,7 +2,14 @@
 {% block content %}
 <div class="page-head">
   <h4><i class="bi bi-people"></i> Customers</h4>
-  <a href="{{ url_for('customers.new_customer') }}" class="btn btn-brand btn-sm"><i class="bi bi-plus"></i> New</a>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('customers.advances') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-wallet2"></i> Advances</a>
+    <a href="{{ url_for('customers.feedback') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-star"></i> Feedback</a>
+    {% if current_user.is_manager %}
+    <a href="{{ url_for('customers.messages') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-chat-dots"></i> Messages</a>
+    {% endif %}
+    <a href="{{ url_for('customers.new_customer') }}" class="btn btn-brand btn-sm"><i class="bi bi-plus"></i> New</a>
+  </div>
 </div>
 <form class="mb-3"><input class="form-control" name="q" placeholder="Search name, phone, email" value="{{ q }}"></form>
 <div class="card">

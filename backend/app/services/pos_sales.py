@@ -161,6 +161,12 @@ def _rows(sql, params):
         return []
 
 
+#: A bill the till cancelled sold nothing. `payment_status` is on every shop
+#: database there has ever been, so this needs no column check; COALESCE keeps a
+#: row with no status counted, as it always was.
+LIVE_BILL = " AND COALESCE(i.payment_status, 'paid') <> 'cancelled'"
+
+
 def _window(start, end, col):
     where, params = "", []
     if start:
@@ -191,7 +197,7 @@ def sales_by_product(start=None, end=None):
         "FROM " + q("invoice_items") + " ii "
         "JOIN " + q("invoices") + " i ON i.id = ii.invoice_id "
         "JOIN " + q("products") + " p ON p.id = ii.product_id "
-        "WHERE p.warehouse_id IS NOT NULL" + sold_where +
+        "WHERE p.warehouse_id IS NOT NULL" + LIVE_BILL + sold_where +
         " GROUP BY p.warehouse_id", sold_params)
 
     ret_where, ret_params = _window(start, end, "cn.created_at")
@@ -242,7 +248,7 @@ def bills_for_product(product_id, limit=50):
         "JOIN " + q("invoices") + " i ON i.id = ii.invoice_id "
         "JOIN " + q("products") + " p ON p.id = ii.product_id "
         "LEFT JOIN customers c ON c.id = i.customer_id "
-        "WHERE p.warehouse_id = ? "
+        "WHERE p.warehouse_id = ?" + LIVE_BILL + " "
         "ORDER BY i.invoice_date DESC, i.id DESC LIMIT ?", (int(product_id), int(limit)))
     rows = [{
         "kind": "sale", "bill_no": r[0], "date": (r[1] or "")[:10] or None,
@@ -298,7 +304,7 @@ def status():
                  "FROM " + q("invoices") + " i "
                  "JOIN " + q("invoice_items") + " ii ON ii.invoice_id = i.id "
                  "JOIN " + q("products") + " p ON p.id = ii.product_id "
-                 "WHERE p.warehouse_id IS NOT NULL", [])
+                 "WHERE p.warehouse_id IS NOT NULL" + LIVE_BILL, [])
     last, linked = (rows[0] if rows else (None, 0))
     return {"available": True, "reason": None, "path": str(p), "source": str(p),
             "last_sale": (last or "")[:10] or None,

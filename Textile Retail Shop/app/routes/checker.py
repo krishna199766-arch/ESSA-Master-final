@@ -85,7 +85,7 @@ def index():
             units = warehouse_items.fetch_units(product.warehouse_id)
         sales = (db.session.query(InvoiceItem, Invoice)
                  .join(Invoice, InvoiceItem.invoice_id == Invoice.id)
-                 .filter(InvoiceItem.product_id == product.id)
+                 .filter(InvoiceItem.product_id == product.id, Invoice.live())
                  .order_by(Invoice.invoice_date.desc()).limit(50).all())
 
     options = {"category": [c.name for c in

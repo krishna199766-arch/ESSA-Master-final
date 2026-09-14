@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ adv.number }} — {{ SHOP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head d-print-none">
+  <h4><i class="bi bi-wallet2"></i> Advance {{ adv.number }}</h4>
+  <div>
+    <button onclick="window.print()" class="btn btn-brand btn-sm"><i class="bi bi-printer"></i> Print</button>
+    <a href="{{ url_for('customers.view_customer', cid=adv.customer_id) }}" class="btn btn-outline-secondary btn-sm">Customer</a>
+  </div>
+</div>
+
+<div class="card p-4 mb-3" style="max-width:640px">
+  <div class="d-flex justify-content-between">
+    <div>
+      <div class="fw-bold fs-5">{{ SHOP_NAME }}</div>
+      <div class="small text-muted">{{ SHOP_ADDRESS }}</div>
+      {% if SHOP_PHONE %}<div class="small text-muted">{{ SHOP_PHONE }}</div>{% endif %}
+    </div>
+    <div class="text-end">
+      <div class="fw-bold">ADVANCE RECEIPT</div>
+      <div>{{ adv.number }}</div>
+      <div class="small text-muted">{{ adv.created_at.strftime('%d %b %Y, %H:%M') }}</div>
+    </div>
+  </div>
+  <hr>
+  <div class="row small">
+    <div class="col-6">
+      <div>Received from</div>
+      <div><strong>{{ adv.customer.name }}</strong></div>
+      {% if adv.customer.phone %}<div class="text-muted">{{ adv.customer.phone }}</div>{% endif %}
+    </div>
+    <div class="col-6 text-end">
+      <div>Paid by {{ adv.method|upper }}{% if adv.reference %} · {{ adv.reference }}{% endif %}</div>
+      {% if adv.cashier %}<div class="text-muted">Taken by {{ adv.cashier.full_name or adv.cashier.username }}</div>{% endif %}
+      {% if adv.note %}<div class="text-muted">{{ adv.note }}</div>{% endif %}
+    </div>
+  </div>
+  <div class="d-flex justify-content-end mt-3">
+    <table class="table table-sm w-auto mb-0">
+      <tr class="fw-bold"><td>Advance received</td><td class="text-end">{{ adv.amount|inr }}</td></tr>
+      {% if used %}<tr><td class="text-muted">Spent on bills</td><td class="text-end">- {{ used|inr }}</td></tr>{% endif %}
+      {% if adv.refunded %}<tr><td class="text-muted">Refunded{% if adv.refund_method %} ({{ adv.refund_method|upper }}){% endif %}</td><td class="text-end">- {{ adv.refunded|inr }}</td></tr>{% endif %}
+      <tr><td>Balance</td><td class="text-end"><strong>{{ balance|inr }}</strong></td></tr>
+    </table>
+  </div>
+  <p class="small text-muted mt-3 mb-0">
+    This is not a tax invoice. Quote <b>{{ adv.number }}</b> at the counter to use the
+    balance against a purchase; tax is charged on that bill.
+  </p>
+</div>
+
+{% if balance > 0 and current_user.is_manager %}
+<form method="post" action="{{ url_for('customers.refund_advance', aid=adv.id) }}"
+      class="card p-3 d-print-none" style="max-width:640px"
+      onsubmit="return confirm('Refund this advance to the customer?')">
+  <div class="fw-semibold mb-2">Refund the unspent balance</div>
+  <div class="row g-2 align-items-end">
+    <div class="col-5"><label class="form-label small">Amount</label>
+      <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" max="{{ balance }}" name="amount" value="{{ balance }}"></div>
+    <div class="col-4"><label class="form-label small">Refund by</label>
+      <select class="form-select form-select-sm" name="method">
+        {% for m in ['cash', 'card', 'upi'] %}<option value="{{ m }}">{{ m|upper }}</option>{% endfor %}
+      </select></div>
+    <div class="col-3"><button class="btn btn-outline-danger btn-sm w-100">Refund</button></div>
+  </div>
+</form>
+{% endif %}
+
+<style>
+  @media print { .brand-nav, .alert, .d-print-none { display: none !important; } body { background:#fff; } }
+</style>
+{% endblock %}
