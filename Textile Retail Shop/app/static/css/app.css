@@ -1090,3 +1090,78 @@ main > .alert-dismissible { display: flex; align-items: center; }
   .form-control[type=number], .form-control[type=date], .form-control[type=time],
   .form-control[type=month], .form-control[type=tel] { max-width: none; }
 }
+
+/* ==========================================================================
+   Sales / Retail Reports — the catalogue and the report page
+   ========================================================================== */
+.rpt-tabs { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: var(--bg); }
+.rpt-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+  border-radius: 6px; font-size: .75rem; font-weight: 600; color: var(--muted); text-decoration: none; }
+.rpt-tab:hover { color: var(--text); }
+.rpt-tab.on { background: var(--brand); color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+
+.rpt-find { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.rpt-find > .bi { color: var(--muted); }
+.rpt-find .form-control { max-width: 420px; flex: 1 1 260px; }
+
+/* Two columns that pack like the reference menu — a long group does not leave a
+   hole beside a short one. */
+.rpt-grid { columns: 2 440px; column-gap: 16px; }
+.rpt-group { break-inside: avoid; margin-bottom: 16px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-1);
+  overflow: hidden; display: block; }
+.rpt-group[hidden] { display: none; }
+.rpt-head { width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 11px 16px; background: var(--panel-2); border: none;
+  border-bottom: 1px solid var(--line); font-size: .75rem; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--text); text-align: left; }
+.rpt-head:hover { background: var(--brand-100); }
+.rpt-head .rpt-n { color: var(--muted); font-weight: 600; }
+.rpt-head .bi { color: var(--muted); }
+.rpt-group.folded .rpt-head { border-bottom: none; }
+.rpt-group.folded .rpt-list { display: none; }
+.rpt-list { list-style: none; margin: 0; padding: 6px; }
+.rpt-list li[hidden] { display: none; }
+.rpt-link { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px;
+  font-size: .8125rem; font-weight: 500; color: var(--text); text-decoration: none; }
+.rpt-link .bi { color: var(--accent); flex: 0 0 auto; }
+.rpt-link:hover { background: var(--brand-50); color: var(--brand); }
+.rpt-link:hover > span:first-of-type { text-decoration: underline; text-underline-offset: 2px; }
+.rpt-link.na { color: var(--muted); }
+.rpt-link.na .bi { color: var(--line-strong); }
+.rpt-na { margin-left: auto; font-family: var(--font-mono); font-size: .625rem; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); background: var(--bg); border: 1px solid var(--line);
+  border-radius: var(--radius-xs); padding: 1px 6px; white-space: nowrap; }
+
+.rpt-back { display: inline-flex; align-items: center; gap: 4px; font-size: .75rem; font-weight: 600;
+  color: var(--accent-hover); text-decoration: none; margin-bottom: 4px; }
+.rpt-back:hover { color: var(--brand); }
+
+.rpt-totals { display: flex; flex-wrap: wrap; gap: 10px; }
+.rpt-total { display: flex; flex-direction: column; gap: 2px; min-width: 130px; padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-1); }
+.rpt-total span { font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); }
+.rpt-total strong { font-size: 1.125rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+
+.rpt-table-card { overflow: hidden; }
+.rpt-table-card .table-responsive { max-height: 70vh; }
+.rpt-table thead th { position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+/* a register reads along its row; the card scrolls sideways rather than a date
+   folding onto three lines on a phone */
+.rpt-table td { white-space: nowrap; }
+.rpt-table td.num { font-family: var(--font-mono); font-size: .75rem; white-space: nowrap; }
+.rpt-foot { padding: 8px 14px; border-top: 1px solid var(--line); background: var(--panel-2); }
+.rpt-text { white-space: pre-wrap; font-family: var(--font-mono); font-size: .75rem; background: var(--bg);
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
+.rpt-na-icon { width: 44px; height: 44px; border-radius: 50%; background: var(--brand-100); color: var(--brand);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 1.25rem; flex: 0 0 auto; }
+
+@media print {
+  .brand-nav, .rpt-filters, .alert { display: none !important; }
+  .rpt-table-card .table-responsive { max-height: none; overflow: visible; }
+  .rpt-table thead th { position: static; }
+  body { background: #fff; }
+}

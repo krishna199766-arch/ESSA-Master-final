@@ -1,4 +1,7 @@
-from flask import Blueprint, render_template, request, jsonify
+import csv
+import io
+
+from flask import Blueprint, Response, abort, render_template, request, jsonify
 from flask_login import login_required
 from datetime import datetime, date, timedelta
 from sqlalchemy import func
@@ -6,7 +9,7 @@ from app import db
 from app.models import (Company, Counter, Customer, Invoice, InvoiceItem,
                         Location, Product)
 from app.utils import role_required
-from app import nlq, reports_lib
+from app import nlq, reports_lib, retail_reports
 
 reports_bp = Blueprint("reports", __name__)
 
@@ -182,8 +185,16 @@ def index():
     # between two totals that do not match.
     unplaced = sum(1 for i in invoices if not i.location_id)
 
+    # Two views of one page: the report catalogue, which is what somebody opens
+    # Reports for, and the sales overview beneath it. Both are drawn every time
+    # and one is shown; a filter applied on the overview comes back to the
+    # overview, so pressing Apply never throws somebody back to the catalogue.
+    filtered = any(request.args.get(k) for k in ("from", "to", "company", "location", "counter"))
+    view = request.args.get("view") or ("overview" if filtered else "all")
+
     return render_template(
         "reports/index.html",
+        view=view, groups=retail_reports.catalogue(),
         start=start, end=end,
         chosen=chosen, places=place_lists(),
         by_location=by_location, by_counter=by_counter, by_company=by_company,
@@ -194,6 +205,61 @@ def index():
         top_products=top, pay_rows=pay_rows,
         gst_summary=gst_summary, top_customers=top_customers,
     )
+
+
+@reports_bp.route("/r/<key>")
+@login_required
+@role_required("admin", "manager")
+def report(key):
+    """One report from the catalogue: its filters, its table, and its export.
+
+    `?export=csv` hands back the same rows as a spreadsheet — the figures a
+    manager downloads must be the figures on the screen, so both come from one
+    run of the one function.
+    """
+    spec = retail_reports.REPORTS.get(key)
+    if not spec:
+        abort(404)
+    start, end = parse_range()
+    _, chosen = parse_places()
+    params = {p["key"]: request.args.get(p["key"], p["default"]) for p in spec["params"]}
+    result = None
+    if not spec["unavailable"]:
+        result = retail_reports.run(key, start, end, chosen["company"], chosen["location"],
+                                    chosen["counter"], params)
+
+    if request.args.get("export") == "csv" and result is not None:
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow([spec["group_label"], spec["label"]])
+        if spec["dated"]:
+            w.writerow(["From", start.strftime("%d-%m-%Y"), "To", end.strftime("%d-%m-%Y")])
+        w.writerow([])
+        w.writerow(result["columns"])
+        w.writerows(result["rows"])
+        if result["totals"]:
+            w.writerow([])
+            for k, v in result["totals"].items():
+                w.writerow([k, v])
+        if result["note"]:
+            w.writerow([])
+            w.writerow([result["note"]])
+        name = f"{key}_{start.isoformat()}_{end.isoformat()}.csv" if spec["dated"] else f"{key}.csv"
+        # The byte-order mark is what makes Excel read the rupee sign and Tamil
+        # names as UTF-8 rather than as mojibake.
+        return Response("﻿" + buf.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    numeric = set()
+    if result:
+        for i in range(len(result["columns"])):
+            if any(isinstance(r[i], (int, float)) and not isinstance(r[i], bool)
+                   for r in result["rows"] if i < len(r)):
+                numeric.add(i)
+    return render_template(
+        "reports/view.html", spec=spec, result=result, numeric=numeric,
+        start=start, end=end, chosen=chosen, places=place_lists(), params=params,
+        see=retail_reports.REPORTS.get(spec.get("see")) if spec.get("see") else None)
 
 
 @reports_bp.route("/low-stock")

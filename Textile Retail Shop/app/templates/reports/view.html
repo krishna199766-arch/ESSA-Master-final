@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.label }} · {{ SHOP_NAME }}{% endblock %}
+{% macro cell(v) -%}
+  {%- if v is number and v is not boolean -%}
+    {%- if v is integer -%}{{ '{:,}'.format(v) }}{%- else -%}{{ '{:,.2f}'.format(v) }}{%- endif -%}
+  {%- else -%}{{ v if v is not none else '—' }}{%- endif -%}
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{{ url_for('reports.index', view='all') }}" class="rpt-back d-print-none">
+      <i class="bi bi-arrow-left"></i> All reports</a>
+    <h4><i class="bi bi-file-earmark-bar-graph"></i> {{ spec.label }}</h4>
+    <div class="page-sub">
+      {{ spec.group_label }}
+      {% if result is not none %}
+        · {% if spec.dated %}{{ start|dmy }} to {{ end|dmy }}{% else %}as it stands now{% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% if result is not none %}
+  <div class="d-flex gap-2 d-print-none">
+    <a class="btn btn-outline-secondary"
+       href="{{ request.path }}?{{ request.query_string.decode() }}{{ '&' if request.query_string else '' }}export=csv">
+      <i class="bi bi-download"></i> Export CSV</a>
+    <button type="button" class="btn btn-outline-secondary" onclick="window.print()">
+      <i class="bi bi-printer"></i> Print</button>
+  </div>
+  {% endif %}
+</div>
+
+{% if spec.unavailable %}
+{# Listed so the menu is complete, and honest about why there is nothing in it. #}
+<div class="card p-4 rpt-unavailable">
+  <div class="d-flex gap-3 align-items-start">
+    <div class="rpt-na-icon"><i class="bi bi-slash-circle"></i></div>
+    <div>
+      <h6 class="mb-1">This report has nothing to show yet</h6>
+      <p class="mb-2 text-muted">{{ spec.unavailable }}</p>
+      {% if see %}
+      <a class="btn btn-brand btn-sm" href="{{ url_for('reports.report', key=see.key) }}">
+        Open {{ see.label }} <i class="bi bi-arrow-right"></i></a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% else %}
+
+{% if spec.dated or spec.places or spec.params %}
+<form class="card p-3 mb-3 d-print-none rpt-filters" method="get">
+  <div class="row g-2 align-items-end">
+    {% if spec.dated %}
+    <div class="col-6 col-md-2"><label class="form-label small mb-1">From</label>
+      <input class="form-control" type="date" name="from" value="{{ start }}"></div>
+    <div class="col-6 col-md-2"><label class="form-label small mb-1">To</label>
+      <input class="form-control" type="date" name="to" value="{{ end }}"></div>
+    {% endif %}
+    {% if spec.places == true %}
+    <div class="col-md-2"><label class="form-label small mb-1">Company</label>
+      <select class="form-select" name="company">
+        <option value="">Every company</option>
+        {% for c in places.companies %}
+        <option value="{{ c.id }}" {% if chosen.company == c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select></div>
+    {% endif %}
+    {% if spec.places %}
+    <div class="col-md-2"><label class="form-label small mb-1">Branch</label>
+      <select class="form-select" name="location">
+        <option value="">Every branch</option>
+        {% for l in places.locations %}
+        <option value="{{ l.id }}" {% if chosen.location == l.id %}selected{% endif %}>{{ l.name }}</option>
+        {% endfor %}
+      </select></div>
+    {% endif %}
+    {% if spec.places == true %}
+    <div class="col-md-2"><label class="form-label small mb-1">Till</label>
+      <select class="form-select" name="counter">
+        <option value="">Every till</option>
+        {% for c, where in places.counters %}
+        <option value="{{ c.id }}" {% if chosen.counter == c.id %}selected{% endif %}>{{ where }} · {{ c.name }}</option>
+        {% endfor %}
+      </select></div>
+    {% endif %}
+    {% for p in spec.params %}
+    <div class="col-md-2"><label class="form-label small mb-1">{{ p.label }}</label>
+      {% if p.type == 'select' %}
+      <select class="form-select" name="{{ p.key }}">
+        {% for val, text in p.options %}
+        <option value="{{ val }}" {% if params[p.key]|string == val|string %}selected{% endif %}>{{ text }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <input class="form-control" type="number" step="any" name="{{ p.key }}" value="{{ params[p.key] }}">
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="col-md-auto"><button class="btn btn-brand">Apply</button></div>
+  </div>
+  {% if not spec.places %}
+  <div class="small text-muted mt-2"><i class="bi bi-info-circle"></i>
+    This report covers the whole shop — it cannot be split by branch or till.</div>
+  {% endif %}
+</form>
+{% endif %}
+
+{% if result.totals %}
+<div class="rpt-totals mb-3">
+  {% for k, v in result.totals.items() %}
+  <div class="rpt-total"><span>{{ k }}</span><strong>{{ cell(v) }}</strong></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if result.text %}
+<div class="card p-3 mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h6 class="mb-0">Text summary</h6>
+    <button type="button" class="btn btn-sm btn-outline-secondary d-print-none" id="copyText">
+      <i class="bi bi-clipboard"></i> Copy</button>
+  </div>
+  <pre class="rpt-text mb-0" id="rptText">{{ result.text }}</pre>
+</div>
+{% endif %}
+
+<div class="card rpt-table-card">
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 rpt-table">
+      <thead><tr>
+        {% for c in result.columns %}
+        <th class="{% if loop.index0 in numeric %}text-end{% endif %}">{{ c }}</th>
+        {% endfor %}
+      </tr></thead>
+      <tbody>
+        {% for r in result.rows %}
+        <tr>
+          {% for v in r %}
+          <td class="{% if loop.index0 in numeric %}text-end num{% endif %}">{{ cell(v) }}</td>
+          {% endfor %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ result.columns|length }}" class="text-center text-muted p-4">
+          Nothing to show for this {{ 'period' if spec.dated else 'report' }}.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="rpt-foot small text-muted">
+    {{ result.rows|length }} row{{ '' if result.rows|length == 1 else 's' }}
+  </div>
+</div>
+
+{% if result.note %}
+<div class="small text-muted mt-2"><i class="bi bi-info-circle"></i> {{ result.note }}</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const btn = document.getElementById('copyText');
+  if (!btn) return;
+  btn.onclick = async () => {
+    const text = document.getElementById('rptText').textContent;
+    try { await navigator.clipboard.writeText(text); btn.innerHTML = '<i class="bi bi-check2"></i> Copied'; }
+    catch (e) {
+      const r = document.createRange(); r.selectNodeContents(document.getElementById('rptText'));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      btn.textContent = 'Press Ctrl+C';
+    }
+  };
+})();
+</script>
+{% endblock %}

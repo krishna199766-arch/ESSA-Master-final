@@ -2,8 +2,20 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h4><i class="bi bi-graph-up"></i> Reports</h4>
+    <h4><i class="bi bi-graph-up"></i> Sales / Retail Reports</h4>
     <div class="page-sub">Every register — or just ask a question in plain words</div>
+  </div>
+  {# Two views of one page, switched here without a reload. Links as well as
+     buttons, so a view can be bookmarked and opens where it was left. #}
+  <div class="rpt-tabs" role="tablist">
+    <a href="{{ url_for('reports.index', view='all') }}" role="tab" data-view="all"
+       class="rpt-tab {% if view != 'overview' %}on{% endif %}"
+       aria-selected="{{ 'false' if view == 'overview' else 'true' }}">
+      <i class="bi bi-list-ul"></i> Report catalogue</a>
+    <a href="{{ url_for('reports.index', view='overview') }}" role="tab" data-view="overview"
+       class="rpt-tab {% if view == 'overview' %}on{% endif %}"
+       aria-selected="{{ 'true' if view == 'overview' else 'false' }}">
+      <i class="bi bi-bar-chart-line"></i> Sales overview</a>
   </div>
 </div>
 
@@ -29,10 +41,53 @@
   <div id="askOut" class="mt-3"></div>
 </div>
 
+{# ---- the catalogue ----
+   The report menu group by group, in the order and under the names the reference
+   ERP uses, so a report is found where people already look for it. A report the
+   shop keeps no record for is still listed — greyed, and it says why when opened —
+   so the menu is complete without pretending. #}
+<div id="view-all" {% if view == 'overview' %}hidden{% endif %}>
+  <div class="rpt-find">
+    <i class="bi bi-search"></i>
+    <input id="rptFilter" class="form-control" type="search" autocomplete="off"
+           placeholder="Find a report — “tax”, “salesman”, “stock”…" aria-label="Find a report">
+    <span class="small text-muted" id="rptCount">
+      {% set ns = namespace(n=0, ok=0) %}
+      {% for g in groups %}{% set ns.n = ns.n + g.reports|length %}{% set ns.ok = ns.ok + g.available %}{% endfor %}
+      {{ ns.ok }} of {{ ns.n }} reports have data to show</span>
+  </div>
+  <div class="rpt-grid">
+    {% for g in groups %}
+    <section class="rpt-group" data-group="{{ g.key }}">
+      <button type="button" class="rpt-head" aria-expanded="true">
+        <span>{{ g.label }} <span class="rpt-n">({{ g.reports|length }})</span></span>
+        <i class="bi bi-dash-lg" aria-hidden="true"></i>
+      </button>
+      <ul class="rpt-list">
+        {% for r in g.reports %}
+        <li data-name="{{ (r.label ~ ' ' ~ g.label)|lower }}">
+          <a href="{{ url_for('reports.report', key=r.key) }}"
+             class="rpt-link{% if r.unavailable %} na{% endif %}"
+             title="{{ r.unavailable if r.unavailable else 'Open ' ~ r.label }}">
+            <i class="bi {{ 'bi-slash-circle' if r.unavailable else 'bi-file-earmark-bar-graph' }}"></i>
+            <span>{{ r.label }}</span>
+            {% if r.unavailable %}<span class="rpt-na">not recorded</span>{% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endfor %}
+  </div>
+  <div id="rptNone" class="text-muted small p-3" hidden>No report matches that.</div>
+</div>
+
+<div id="view-overview" {% if view != 'overview' %}hidden{% endif %}>
 {# Every figure below is filtered by these three, not just the tables that name
    them: a page headed "Tirupur" whose totals count every branch is worse than a
    page with no filter on it. #}
 <form class="row g-2 mb-3">
+  <input type="hidden" name="view" value="overview">
   <div class="col-md-2"><input class="form-control" type="date" name="from" value="{{ start }}"></div>
   <div class="col-md-2"><input class="form-control" type="date" name="to" value="{{ end }}"></div>
   <div class="col-md-2">
@@ -171,8 +226,67 @@
     </div>
   </div>
 </div>
+</div>{# /view-overview #}
 {% endblock %}
 {% block scripts %}
+<script>
+// ---- The two views, and the catalogue's find box and folding groups ---------
+(function(){
+  const tabs = document.querySelectorAll('.rpt-tab');
+  const views = { all: document.getElementById('view-all'),
+                  overview: document.getElementById('view-overview') };
+  tabs.forEach(t => t.addEventListener('click', (e) => {
+    e.preventDefault();
+    const v = t.dataset.view;
+    tabs.forEach(x => { const on = x === t; x.classList.toggle('on', on); x.setAttribute('aria-selected', on); });
+    Object.entries(views).forEach(([k, el]) => { el.hidden = k !== v; });
+    history.replaceState(null, '', t.href);
+    // Chart.js cannot size a canvas that was hidden when it drew, so the trend is
+    // redrawn the first time the overview is actually shown.
+    if (v === 'overview' && window.__drawTrend) window.__drawTrend();
+  }));
+
+  // Folded groups are remembered, because a manager who only ever opens the tax
+  // reports should not have to fold the other ten away every morning.
+  const KEY = 'shop_report_groups_folded';
+  let folded = {};
+  try { folded = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+  document.querySelectorAll('.rpt-group').forEach(g => {
+    const head = g.querySelector('.rpt-head');
+    const set = (open) => {
+      g.classList.toggle('folded', !open);
+      head.setAttribute('aria-expanded', open);
+      head.querySelector('.bi').className = 'bi ' + (open ? 'bi-dash-lg' : 'bi-plus-lg');
+    };
+    set(!folded[g.dataset.group]);
+    head.addEventListener('click', () => {
+      const open = g.classList.contains('folded');
+      set(open);
+      folded[g.dataset.group] = !open;
+      try { localStorage.setItem(KEY, JSON.stringify(folded)); } catch (e) {}
+    });
+  });
+
+  // Find: filters every group at once and opens any group holding a match.
+  const box = document.getElementById('rptFilter');
+  const none = document.getElementById('rptNone');
+  box && box.addEventListener('input', () => {
+    const q = box.value.trim().toLowerCase();
+    let any = false;
+    document.querySelectorAll('.rpt-group').forEach(g => {
+      let hits = 0;
+      g.querySelectorAll('li').forEach(li => {
+        const hit = !q || li.dataset.name.includes(q);
+        li.hidden = !hit; if (hit) hits++;
+      });
+      g.hidden = hits === 0;
+      if (q && hits) g.classList.remove('folded');
+      if (hits) any = true;
+    });
+    none.hidden = any;
+  });
+})();
+</script>
 <script>
 // ---- Ask a question --------------------------------------------------------
 // The server routes the question to one report and returns it in the shape every
@@ -273,17 +387,22 @@
 </script>
 
 <script>
-new Chart(document.getElementById('trendChart'), {
-  type: 'bar',
-  data: {
-    labels: {{ trend_labels|tojson }},
-    datasets: [{
-      label: 'Sales (₹)',
-      data: {{ trend_values|tojson }},
-      backgroundColor: '#2F8F68'
-    }]
-  },
-  options: { plugins: { legend: { display: false } } }
-});
+window.__drawTrend = function(){
+  if (window.__trendDrawn || typeof Chart === 'undefined') return;
+  window.__trendDrawn = true;
+  new Chart(document.getElementById('trendChart'), {
+    type: 'bar',
+    data: {
+      labels: {{ trend_labels|tojson }},
+      datasets: [{
+        label: 'Sales (₹)',
+        data: {{ trend_values|tojson }},
+        backgroundColor: '#2F8F68'
+      }]
+    },
+    options: { plugins: { legend: { display: false } } }
+  });
+};
+if (!document.getElementById('view-overview').hidden) window.__drawTrend();
 </script>
 {% endblock %}
