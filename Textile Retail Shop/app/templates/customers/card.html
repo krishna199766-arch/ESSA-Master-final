@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Card — {{ customer.name }}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
+<div class="page-head d-print-none">
   <h4><i class="bi bi-person-vcard"></i> Membership card</h4>
   <div>
     <button onclick="window.print()" class="btn btn-brand btn-sm"><i class="bi bi-printer"></i> Print card</button>
@@ -30,15 +30,16 @@
     box-shadow: 0 2px 8px rgba(0,0,0,.08);
   }
   .cust-card-top { display:flex; justify-content:space-between; align-items:center; }
-  .cust-shop { font-weight: 700; color: var(--brand-dark, #40241B); }
+  .cust-shop { font-weight: 700; color: var(--brand-dark, #0B3D2E); }
   .cust-tag { font-size: 10px; font-weight: 700; letter-spacing: 1px;
-              background: var(--brand-100, #EFE4DF); color: var(--brand, #5A3428);
-              padding: 2px 8px; border-radius: 20px; }
+              background: var(--brand-100, #E7F4EC); color: var(--brand, #0B3D2E);
+              border: 1px solid rgba(47,143,104,.3);
+              padding: 2px 8px; border-radius: 6px; }
   .cust-name { font-size: 20px; font-weight: 700; margin: 10px 0 2px; }
   .cust-meta { display:flex; justify-content:center; gap:12px; font-size: 13px; color:#444; margin-bottom: 10px; }
-  /* --gold-line is a *border* token (3.43:1); as text it would fail. This is
-     that gold darkened to 5.5:1 on the card, which is white here and in print. */
-  .cust-points { font-weight: 700; color:#8A6224; }
+  /* The accent as TEXT is its darker step, #257353 (5.7:1 on the white card,
+     here and in print); the lighter #2F8F68 is for marks, not words. */
+  .cust-points { font-weight: 700; color:#257353; }
   .cust-bars svg { max-width: 100%; height: auto; }
   .cust-foot { font-size: 11px; color:#666; margin-top: 6px; font-family: monospace; }
   @media print {

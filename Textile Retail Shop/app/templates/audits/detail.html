@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
-{% set BADGE = {'not_started':'secondary','in_progress':'primary','completed':'info',
-                'reviewed':'warning','approved':'success','cancelled':'secondary'} %}
+{% set BADGE = {'not_started':'secondary','in_progress':'warning','completed':'info',
+                'reviewed':'warning','approved':'success','cancelled':'danger'} %}
 {% set LINE = {'not_counted':'secondary','matched':'success','shortage':'danger','excess':'warning'} %}
 
-<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+<div class="page-head align-items-start">
   <div>
     <h4 class="mb-1"><i class="bi bi-clipboard-check"></i> {{ audit.number }}
       <span class="badge text-bg-{{ BADGE.get(audit.status, 'secondary') }}">
         {{ audit.status.replace('_', ' ') }}</span>
       {% if audit.adjusted_at %}<span class="badge text-bg-success">stock adjusted</span>{% endif %}
     </h4>
-    <div class="text-muted small">
+    <div class="page-sub">
       {{ audit.floor.name if audit.floor else '—' }} ·
       {{ audit.location.name if audit.location else '' }} ·
       started {{ audit.started_at|dmy }} {{ audit.started_at.strftime('%H:%M') }}
@@ -41,12 +41,12 @@
        ('Excess', 'excess', 'pieces over'),
        ('Matched', 'matched', 'lines that agree')] %}
   <div class="col-6 col-md-3 col-xl">
-    <div class="card p-2 h-100">
-      <div class="text-muted small">{{ label }}</div>
-      <div class="fs-5 fw-bold" data-sum="{{ key }}"
-           style="color:{% if key == 'shortage' %}#b23b3b{% elif key == 'excess' %}#8a6d3b{% else %}var(--brand-dark){% endif %}">
+    <div class="kpi-card h-100">
+      <div class="kpi-label">{{ label }}</div>
+      <div class="kpi-value" data-sum="{{ key }}"
+           style="color:{% if key == 'shortage' %}#BE123C{% elif key == 'excess' %}#B45309{% else %}var(--text){% endif %}">
         {{ summary[key] }}</div>
-      <div class="text-muted" style="font-size:.72rem">{{ hint }}</div>
+      <div class="kpi-sub">{{ hint }}</div>
     </div>
   </div>
   {% endfor %}
@@ -202,7 +202,7 @@
                 {% endif %}
               </td>
               <td class="text-end fw-bold diff"
-                  style="color:{% if l.difference < 0 %}#b23b3b{% elif l.difference > 0 %}#8a6d3b{% else %}inherit{% endif %}">
+                  style="color:{% if l.difference < 0 %}#BE123C{% elif l.difference > 0 %}#B45309{% else %}inherit{% endif %}">
                 {% if l.physical_qty is none %}—{% else %}{{ '%+g' % l.difference if l.difference else 0 }}{% endif %}
               </td>
               <td><span class="badge text-bg-{{ LINE[l.line_status] }} status">
@@ -345,14 +345,14 @@ function paintDiff(){
   note.textContent = d === 0 ? 'Matches the books.'
     : (d < 0 ? `${-d} short of the ${trim(current.system_qty)} the system expects.`
              : `${d} more than the ${trim(current.system_qty)} the system expects.`);
-  note.style.color = d === 0 ? '#2c6e49' : (d < 0 ? '#b23b3b' : '#8a6d3b');
+  note.style.color = d === 0 ? '#257353' : (d < 0 ? '#BE123C' : '#B45309');
 }
 $('qtyBox').oninput = paintDiff;
 
 function say(msg, kind){
   const el = $('scanMsg');
   el.textContent = msg || '';
-  el.style.color = kind === 'err' ? '#b23b3b' : (kind === 'warn' ? '#8a6d3b' : '#2c6e49');
+  el.style.color = kind === 'err' ? '#BE123C' : (kind === 'warn' ? '#B45309' : '#257353');
 }
 
 async function lookup(code){
@@ -410,8 +410,8 @@ function paintRow(d){
   if (diff){
     diff.textContent = d.physical_qty == null ? '—'
       : (d.difference > 0 ? '+' : '') + d.difference;
-    diff.style.color = d.difference < 0 ? '#b23b3b'
-      : (d.difference > 0 ? '#8a6d3b' : 'inherit');
+    diff.style.color = d.difference < 0 ? '#BE123C'
+      : (d.difference > 0 ? '#B45309' : 'inherit');
   }
   const badge = row.querySelector('.status');
   if (badge){

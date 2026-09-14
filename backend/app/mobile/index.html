@@ -3,47 +3,93 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#5A3428" />
+<meta name="theme-color" content="#0B3D2E" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="ESSA AI" />
 <link rel="manifest" href="/m/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/m/icon.png" />
 <title>ESSA AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- Inter + JetBrains Mono, fetched without holding up the first paint: a
+     warehouse phone on a LAN with no internet renders straight away in the
+     system font (the fallbacks in --font / --mono) instead of a blank screen. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" media="print" onload="this.media='all'" />
 <style>
-:root{--bg:#F5F2F0;--panel:#FFFFFF;--panel2:#F2EEEB;--line:#E4DCD7;--line2:#96867C;--text:#2A2320;--muted:#7C6F68;--accent:#5A3428;--accent2:#7A4C3D;--ok:#1E7A4D;--okbg:#E7F4ED;--warn:#B45309;--warnbg:#FDF2E3;--danger:#C0392B;--dangerbg:#FBEBE9}
+/* ESSA design tokens. The screens below reference these variables inline
+   (var(--accent), var(--warn), var(--ok)…), so the palette lives here and nowhere
+   else. --chrome is the dark forest green of the header and primary buttons;
+   --accent the green of focus rings, active markers and progress. */
+:root{--bg:#F7F9F7;--panel:#FFFFFF;--panel2:#E7F4EC;--line:#DCE5DF;--line2:#DCE5DF;--text:#17221D;--muted:#68756E;
+  --chrome:#0B3D2E;--chrome2:#082C21;--chrome3:#124234;
+  --accent:#2F8F68;--accent2:#257353;--tint:#E7F4EC;--tint2:#D5EFE0;
+  --ok:#257353;--okbg:#E7F4EC;--warn:#B45309;--warnbg:#FFFBEB;--danger:#E11D48;--dangerbg:#FFF1F2;
+  --font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --shadow:0 1px 2px rgba(0,0,0,.03)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:16px}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.35;letter-spacing:-0.011em;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
 #app{min-height:100%;display:flex;flex-direction:column}
 .pad{padding:env(safe-area-inset-top) 0 0 0}
-input,select,button,textarea{font:inherit;color:var(--text)}
-input,select{width:100%;background:var(--panel);border:1px solid var(--line2);border-radius:10px;padding:12px 12px;font-size:16px}
-input:focus,select:focus{outline:none;border-color:var(--accent)}
-label{display:block;color:var(--muted);font-size:12px;margin:0 0 5px}
-.field{margin-bottom:13px}
-.btn{width:100%;background:var(--accent);border:none;border-radius:10px;padding:14px;font-weight:700;font-size:16px;color:#fff}
-.btn:disabled{opacity:.6}
-.btn.sec{background:var(--panel2);border:1px solid var(--line);color:var(--text)}
-.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px}
-.logo{color:var(--accent);font-size:46px;font-weight:900;letter-spacing:2px}
-.brand{font-size:24px;font-weight:800;margin-top:6px}
+input,select,button,textarea{font:inherit;color:var(--text);letter-spacing:inherit}
+/* 16px in the box itself: anything smaller and iOS zooms the page on focus */
+input,select{width:100%;min-height:44px;background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:10px 12px;font-size:16px;box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s}
+input::placeholder{color:var(--muted);opacity:.6}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+label{display:block;color:var(--text);font-size:12px;font-weight:600;margin:0 0 5px}
+.field{margin-bottom:14px}
+.btn{width:100%;min-height:46px;display:flex;align-items:center;justify-content:center;gap:6px;text-align:center;background:var(--chrome);border:1px solid transparent;border-radius:8px;padding:12px 16px;font-weight:600;font-size:14px;line-height:1.2;color:#fff;box-shadow:var(--shadow);cursor:pointer;transition:background-color .15s,border-color .15s}
+.btn:active{background:var(--chrome2)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.sec{background:var(--panel);border-color:var(--line);color:var(--text)}
+.btn.sec:active{background:var(--bg)}
+@media (hover:hover){.btn:hover{background:var(--chrome2)}.btn.sec:hover{background:var(--bg)}}
+.btn:focus-visible,.scanbig:focus-visible,.chip:focus-visible,.link:focus-visible,.selbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px 16px}
+/* the design's logo chip — a white E on the accent green */
+.logo{width:56px;height:56px;border-radius:12px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:0;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.logo::before{content:"E";font-size:28px;letter-spacing:.02em}
+.brand{font-size:20px;font-weight:700;letter-spacing:-0.02em;margin:14px 0 20px;color:var(--text)}
 .brand span{color:var(--accent)}
-.sub{color:var(--muted);font-size:13px;margin:4px 0 20px}
-.card{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+.sub{color:var(--muted);font-size:12px;margin:4px 0 20px}
+.card{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;box-shadow:var(--shadow)}
 .err{color:var(--danger);font-size:13px;text-align:center;margin:6px 0}
-.topbar{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px}
-.topbar h1{font-size:17px;margin:0;flex:1}
-.topbar .count{color:var(--muted);font-size:12px}
-.link{color:var(--accent);font-size:13px;background:none;border:none;padding:6px}
-.controls{padding:12px 14px;display:flex;flex-direction:column;gap:9px;background:var(--bg)}
+/* the header: dark forest chrome, logo chip, white title, header controls */
+.topbar{position:sticky;top:0;z-index:5;background:var(--chrome);color:#fff;border-bottom:1px solid var(--chrome2);min-height:calc(56px + env(safe-area-inset-top));padding:calc(8px + env(safe-area-inset-top)) 12px 8px;display:flex;align-items:center;gap:10px}
+.topbar::before{content:"E";flex:0 0 32px;width:32px;height:32px;border-radius:8px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;letter-spacing:.02em;box-shadow:var(--shadow)}
+.topbar h1{font-size:16px;font-weight:700;letter-spacing:-0.015em;line-height:1.25;margin:0;flex:1;min-width:0;color:#fff;overflow-wrap:anywhere}
+.topbar .count{color:rgba(231,244,236,.8);font-size:11px;font-family:var(--mono);white-space:nowrap}
+.link{color:var(--chrome);font-size:13px;font-weight:600;background:none;border:none;padding:6px;border-radius:8px;cursor:pointer}
+.link:active{background:var(--tint)}
+.topbar .link{color:#fff;background:var(--chrome2);border:1px solid rgba(47,143,104,.3);min-height:40px;padding:0 12px;font-size:13px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center}
+.topbar .link:active{background:var(--chrome3)}
+@media (hover:hover){.topbar .link:hover{background:var(--chrome3)}}
+button.link[data-drop],button.link[data-del],button.link[data-shdel]{min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+/* the context bar under the header: white, divided from the list below */
+.controls{padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:var(--panel);border-bottom:1px solid var(--line)}
+.controls+.controls{margin-top:-1px;padding-top:0}
+.controls+.list{padding-top:12px}
 .row{display:flex;gap:8px}
 /* A flex item defaults to min-width:auto, so a 100%-wide <input> beside two
    buttons refuses to shrink below its intrinsic size and pushes the whole
    page wider than the phone — every row then sits shifted with its right
    edge off-screen. Letting row children shrink is the fix. */
 .row>*{min-width:0}
-.chip{flex:0 0 auto;background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:8px 15px;font-size:14px;color:var(--muted);text-transform:capitalize}
-.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.row[data-item]{cursor:pointer}
+.chip{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:40px;padding:0 14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;font-size:13px;font-weight:500;color:var(--muted);text-transform:capitalize;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none;box-shadow:var(--shadow)}
+.chip:active{background:var(--tint);color:var(--chrome)}
+.chip.on{background:var(--chrome);border-color:var(--chrome);color:#fff;font-weight:600}
+.chip[id$="refresh"]{font-size:18px;min-width:40px;padding:0 10px}
+.chip b{font-family:var(--mono);font-size:10px;font-weight:600;line-height:1;padding:3px 5px;border-radius:6px;background:#FFFBEB;color:#78350F;border:1px solid #FDE68A}
+/* the screen switcher as the design's segmented control */
+.row:has(>.chip[data-tab]){background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px!important}
+.row:has(>.chip[data-tab])>.chip{background:transparent;border-color:transparent;border-radius:6px;box-shadow:none;padding:0 12px}
+.row:has(>.chip[data-tab])>.chip.on{background:var(--chrome);border-color:var(--chrome);color:#fff}
 /* camera scanner overlay */
 .scanov{position:fixed;inset:0;z-index:90;background:#000;display:flex;align-items:center;justify-content:center}
 .scanov video{width:100%;height:100%;object-fit:cover}
@@ -51,80 +97,101 @@ label{display:block;color:var(--muted);font-size:12px;margin:0 0 5px}
   border:3px solid rgba(255,255,255,.9);border-radius:16px;box-shadow:0 0 0 100vmax rgba(0,0,0,.45)}
 .scanhint{position:absolute;bottom:120px;left:0;right:0;text-align:center;color:#fff;
   font-size:15px;text-shadow:0 1px 4px #000;padding:0 24px}
-.scanx{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);
-  background:#fff;color:#111;border:none;border-radius:24px;padding:13px 30px;font-size:16px;font-weight:700}
+.scanx{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);min-height:48px;
+  background:#fff;color:var(--text);border:none;border-radius:12px;padding:13px 30px;font-size:15px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.08)}
 /* the shutter for a document photo — thumb-sized and in the middle, where a
    camera app puts it, so nobody has to look for it while holding a docket flat */
 .shutter{position:absolute;bottom:34px;left:50%;transform:translateX(-50%);
   width:72px;height:72px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.5)}
 .shutter:active{background:#cfcfcf}
 .list{flex:1;overflow:auto;padding:0 14px 24px}
-.prow{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:9px}
-.prow .t{font-weight:600}
-.prow .m{color:var(--muted);font-size:12px;margin-top:3px}
-.badge{border-radius:20px;padding:4px 10px;font-size:11px;flex:0 0 auto}
-.bpend{background:var(--warnbg);color:var(--warn)}
-.bdone{background:var(--okbg);color:var(--ok)}
-.bdup{background:var(--dangerbg);color:var(--danger)}
+.list>p{font-size:13px;padding:0 12px}
+/* list rows as the design's mobile cards */
+.prow{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow);transition:border-color .15s,background-color .15s}
+.prow[data-i],.prow[data-wh],.prow[data-item]{cursor:pointer}
+.prow[data-i]:active,.prow[data-wh]:active,.prow[data-item]:active{background:var(--bg);border-color:var(--accent)}
+@media (hover:hover){.prow[data-i]:hover,.prow[data-wh]:hover,.prow[data-item]:hover{border-color:var(--accent)}}
+.prow .t{font-size:14px;font-weight:600;color:var(--text);line-height:1.3}
+.prow .m{color:var(--muted);font-size:12px;margin-top:3px;line-height:1.4}
+.prow label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px}
+/* status badges: success / pending / danger groups, mono, with a leading dot */
+.badge{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;background:var(--bg);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-family:var(--mono);font-size:10px;font-weight:500;line-height:1.3;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.badge::before{content:"";flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.8}
+.bpend{background:#FFFBEB;color:#78350F;border-color:#FDE68A}
+.bdone{background:#E7F4EC;color:#0B3D2E;border-color:rgba(47,143,104,.3)}
+.bdup{background:#FFF1F2;color:#9F1239;border-color:#FECDD3}
 /* --- stock audit ----------------------------------------------------------
    The scan button is the screen. Someone is holding the phone in one hand and a
    garment in the other, so it is a thumb-sized target at the top rather than a
    control among controls. */
-.scanbig{width:100%;padding:26px;font-size:20px;font-weight:800;border:none;
-  border-radius:14px;background:var(--accent);color:#fff;letter-spacing:.3px}
-.scanbig:disabled{opacity:.6}
+.scanbig{width:100%;min-height:72px;padding:22px;font-size:18px;font-weight:700;border:none;
+  border-radius:12px;background:var(--chrome);color:#fff;letter-spacing:.03em;box-shadow:0 4px 12px rgba(0,0,0,.08);cursor:pointer}
+.scanbig:active{background:var(--chrome2)}
+.scanbig:disabled{opacity:.5}
 /* The tally. Three figures, and the two that matter are coloured — but each
    carries its WORD underneath, because a count read at arm's length under
    warehouse lighting cannot depend on telling two pastels apart. */
 .tally{display:flex;gap:8px;margin-top:10px}
 .tally>div{flex:1;background:var(--panel);border:1px solid var(--line);
-  border-radius:12px;padding:10px;text-align:center}
-.tally .n{font-size:22px;font-weight:800;line-height:1}
-.tally .l{font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;
-  letter-spacing:.4px}
+  border-radius:12px;padding:12px 10px;text-align:center;box-shadow:var(--shadow)}
+.tally .n{font-size:24px;font-weight:700;line-height:1;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:var(--text)}
+.tally .l{font-size:11px;font-weight:600;color:var(--muted);margin-top:6px;text-transform:uppercase;
+  letter-spacing:.04em}
 .tally .ok .n{color:var(--ok)} .tally .no .n{color:var(--danger)}
 /* The verdict on the scan just taken — the thing the person is looking at, so
    it is big, coloured AND worded, and it sits above the running list. */
-.verdict{border-radius:14px;padding:16px;margin-top:12px;border:1px solid}
-.verdict .big{font-size:20px;font-weight:800;letter-spacing:.3px}
+.verdict{border-radius:12px;padding:14px 16px;margin-top:12px;border:1px solid}
+.verdict .big{font-size:20px;font-weight:700;letter-spacing:-0.01em}
 .verdict .det{font-size:13px;margin-top:6px;line-height:1.5}
-.vok{background:var(--okbg);border-color:var(--ok);color:var(--ok)}
-.vno{background:var(--dangerbg);border-color:var(--danger);color:var(--danger)}
-.vunk{background:var(--warnbg);border-color:var(--warn);color:var(--warn)}
+.vok{background:#E7F4EC;border-color:var(--accent);color:#0B3D2E}
+.vno{background:#FFF1F2;border-color:#FDA4AF;color:#9F1239}
+.vunk{background:#FFFBEB;border-color:#FCD34D;color:#78350F}
 .verdict .det{color:var(--text)}
 .arow{border-left:4px solid var(--line)}
-.arow.ok{border-left-color:var(--ok)}
+.arow.ok{border-left-color:var(--accent)}
 .arow.no{border-left-color:var(--danger)}
-.arow.unk{border-left-color:var(--warn)}
+.arow.unk{border-left-color:#D97706}
 .detwrap{flex:1;overflow:auto;padding:16px}
-.detname{font-size:20px;font-weight:700}
+.detname{font-size:20px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:var(--text)}
 .detmeta{color:var(--muted);font-size:13px;margin-top:4px}
-.sheet{position:fixed;inset:0;background:rgba(42,35,32,.45);display:flex;align-items:flex-end;z-index:20}
-.sheetcard{background:var(--panel);width:100%;border-radius:16px 16px 0 0;max-height:80vh;display:flex;flex-direction:column}
-.sheethd{display:flex;align-items:center;justify-content:space-between;padding:15px 16px;border-bottom:1px solid var(--line);font-weight:700}
-.opt{padding:15px 18px;border-bottom:1px solid var(--line);font-size:16px}
-.opt.sel{color:var(--accent)}
+/* pickers slide up as the design's bottom sheet */
+.sheet{position:fixed;inset:0;background:rgba(11,61,46,.4);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);display:flex;align-items:flex-end;z-index:20}
+.sheetcard{background:var(--panel);width:100%;border:1px solid var(--line);border-bottom:0;border-radius:16px 16px 0 0;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 10px 25px -5px rgba(0,0,0,.1),0 8px 10px -6px rgba(0,0,0,.05)}
+.sheetcard::before{content:"";flex:0 0 auto;width:40px;height:4px;border-radius:2px;background:var(--line);margin:8px auto}
+.sheethd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px 8px 16px;background:var(--bg);border-bottom:1px solid var(--line);font-size:15px;font-weight:700;color:var(--text)}
+.sheethd .link{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:22px;font-weight:400;line-height:1;color:var(--muted)}
+.sheethd .link:active{background:var(--tint);color:var(--text)}
+.opt{padding:14px 18px;min-height:48px;border-bottom:1px solid var(--line);font-size:15px;font-weight:400;color:var(--text);cursor:pointer}
+.opt:active{background:var(--bg)}
+.opt.sel{background:var(--tint);color:var(--chrome);font-weight:600;box-shadow:inset 4px 0 0 var(--accent)}
 /* a sheet row that IS a file input: a <label>, so a tap anywhere on the row
    activates it, with the input itself lying invisibly over the row so a tap that
    lands on the control opens the chooser too. Both, because a phone browser
    gives a file input only a small live area of its own — and the plain label
    rules would otherwise repaint this row as a muted little form caption. */
-.opt.pickrow{display:block;position:relative;overflow:hidden;margin:0;color:var(--text)}
-.opt.pickrow input{position:absolute;left:0;top:0;width:100%;height:100%;
-  opacity:0;padding:0;border:0;border-radius:0;background:none}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:11px 18px;border-radius:10px;z-index:40;font-size:14px}
+.opt.pickrow{display:block;position:relative;overflow:hidden;margin:0;color:var(--text);font-size:15px;font-weight:400}
+.opt.pickrow input{position:absolute;left:0;top:0;width:100%;height:100%;min-height:0;
+  opacity:0;padding:0;border:0;border-radius:0;background:none;box-shadow:none}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);background:var(--panel);color:var(--text);border:1px solid rgba(47,143,104,.3);border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.08);padding:12px 16px;z-index:40;font-size:13px;font-weight:500;line-height:1.4}
 /* A new alert, while the app is open. Across the top and over the safe area,
    where a phone's own notification would have been — this is standing in for one. */
-.alertbar{position:fixed;left:0;right:0;top:0;z-index:60;background:var(--accent);color:#fff;
-  padding:calc(11px + env(safe-area-inset-top)) 16px 11px;display:flex;align-items:center;gap:10px;
-  font-size:14px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.alertbar{position:fixed;left:0;right:0;top:0;z-index:60;background:var(--chrome);color:#fff;border-bottom:1px solid var(--chrome2);
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.08)}
 .alertbar span{flex:1}
-.hint{color:var(--muted);font-size:11px;margin-top:2px}
-.selbtn{width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.alertbar .link{background:var(--chrome2);border:1px solid rgba(47,143,104,.3);min-height:36px;padding:0 12px;font-weight:500}
+.alertbar .link:active{background:var(--chrome3)}
+.hint{color:var(--muted);font-size:11px;margin-top:2px;line-height:1.45}
+.selbtn{position:relative;width:100%;min-height:44px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:11px 12px;padding-right:34px!important;font-size:15px;color:var(--text);box-shadow:var(--shadow);cursor:pointer}
+.selbtn::after{content:"";position:absolute;right:14px;top:50%;width:7px;height:7px;margin-top:-6px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg)}
+.selbtn:active{border-color:var(--accent)}
 .selbtn.empty{color:var(--muted)}
 .spin{border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;width:26px;height:26px;animation:sp 1s linear infinite;margin:30px auto}
+/* the breakdown's progress: forest green while filling, the success green once it balances */
+#bar{--accent:var(--chrome);border-radius:3px;transition:width .2s}
 /* the bar that carries the one action a screen commits to (post, save) */
-.actionbar{padding:12px 14px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel)}
+.actionbar{padding:12px 14px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel);box-shadow:0 -4px 12px rgba(0,0,0,.04)}
+.actionbar .m{color:var(--muted);font-size:12px;line-height:1.45}
 @keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>

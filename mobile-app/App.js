@@ -51,7 +51,7 @@ function ServerScreen({ initial, onSave }) {
         <Text style={s.hint}>Find it on that computer: the IP shown by ipconfig/ifconfig, port 8000. Phone must be on the same WiFi.</Text>
         {err ? <Text style={s.err}>{err}</Text> : null}
         <TouchableOpacity style={s.btn} onPress={save} disabled={busy}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Connect</Text>}
+          {busy ? <ActivityIndicator color={C.onChrome} /> : <Text style={s.btnText}>Connect</Text>}
         </TouchableOpacity>
       </View>
     </View>
@@ -78,7 +78,7 @@ function LoginScreen({ api, onLogin, onChangeServer }) {
         <Labeled label="Password"><TextInput style={s.input} secureTextEntry value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor={C.muted} /></Labeled>
         {err ? <Text style={s.err}>{err}</Text> : null}
         <TouchableOpacity style={s.btn} onPress={submit} disabled={busy}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Sign in</Text>}
+          {busy ? <ActivityIndicator color={C.onChrome} /> : <Text style={s.btnText}>Sign in</Text>}
         </TouchableOpacity>
         <TouchableOpacity onPress={onChangeServer}><Text style={s.link}>Change server</Text></TouchableOpacity>
       </View>
@@ -115,7 +115,7 @@ function ListScreen({ api, onPick, onLogout }) {
       <View style={s.topbar}>
         <Text style={s.topTitle}>Products</Text>
         {counts && <Text style={s.topCount}>{counts.pending_detail} pending · {counts.detailed} done</Text>}
-        <TouchableOpacity onPress={onLogout}><Text style={[s.link, { marginTop: 0 }]}>Logout</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onLogout}><Text style={[s.link, s.topLink]}>Logout</Text></TouchableOpacity>
       </View>
       <View style={{ padding: 12, gap: 8 }}>
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -128,7 +128,7 @@ function ListScreen({ api, onPick, onLogout }) {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {['pending', 'all', 'detailed'].map((st) => (
             <TouchableOpacity key={st} style={[s.chip, status === st && s.chipOn]} onPress={() => setStatus(st)}>
-              <Text style={[s.chipText, status === st && { color: '#fff' }]}>{st}</Text>
+              <Text style={[s.chipText, status === st && s.chipTextOn]}>{st}</Text>
             </TouchableOpacity>
           ))}
           <TouchableOpacity style={[s.chip, { marginLeft: 'auto' }]} onPress={() => load()}>
@@ -147,7 +147,8 @@ function ListScreen({ api, onPick, onLogout }) {
                 ) : null}
               </View>
               <View style={[s.badge, item.detailed ? s.badgeDone : s.badgePend]}>
-                <Text style={{ color: item.detailed ? C.ok : C.warn, fontSize: 11 }}>{item.detailed ? 'detailed' : 'pending'}</Text>
+                <View style={[s.badgeDot, { backgroundColor: item.detailed ? C.successText : C.pendingText }]} />
+                <Text style={[s.badgeText, item.detailed ? s.badgeDoneText : s.badgePendText]}>{item.detailed ? 'detailed' : 'pending'}</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -234,10 +235,15 @@ export default function App() {
     </View>
   );
 
+  // The status-bar strip takes the colour of whatever sits directly under it: the
+  // green header on the product detail screen (light icons), the white tab bar in
+  // the app, and the page itself on the server / login screens (dark icons).
+  const onChrome = screen === 'detail';
+  const stripBg = onChrome ? C.primary : (screen === 'server' || screen === 'login') ? C.bg : C.panel;
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <StatusBar style="light" />
-      <View style={{ height: Platform.OS === 'ios' ? 44 : 28 }} />
+      <StatusBar style={onChrome ? 'light' : 'dark'} />
+      <View style={{ height: Platform.OS === 'ios' ? 44 : 28, backgroundColor: stripBg }} />
       {body}
     </View>
   );

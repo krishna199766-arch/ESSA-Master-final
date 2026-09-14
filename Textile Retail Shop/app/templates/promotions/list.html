@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="page-head">
   <h4><i class="bi bi-gift"></i> Promotion schemes</h4>
   <a href="{{ url_for('promotions.new_scheme') }}" class="btn btn-brand btn-sm">
     <i class="bi bi-plus"></i> New scheme</a>
@@ -11,11 +11,13 @@
    whose end date passed last night reads `expired` here this morning without
    anything having had to run overnight. #}
 <div class="d-flex gap-2 flex-wrap mb-3">
+  {# The chips are a segmented control: the one in use is filled dark green,
+     the rest are plain. The colour of a status lives on its badge in the table. #}
   {% for key, label, css in [('', 'All', 'secondary'), ('active', 'Active', 'success'),
-                             ('scheduled', 'Scheduled', 'info'),
-                             ('expired', 'Expired', 'warning'),
+                             ('scheduled', 'Scheduled', 'warning'),
+                             ('expired', 'Expired', 'secondary'),
                              ('inactive', 'Switched off', 'secondary')] %}
-  <a class="btn btn-sm {% if status == key %}btn-{{ css }}{% else %}btn-outline-{{ css }}{% endif %}"
+  <a class="btn btn-sm {% if status == key %}btn-brand{% else %}btn-outline-secondary{% endif %}"
      href="{{ url_for('promotions.index', q=q, status=key) }}">
     {{ label }}
     <span class="badge text-bg-light">{{ counts.values()|sum if not key else counts.get(key, 0) }}</span>
@@ -63,8 +65,8 @@
           <td class="text-end">{{ used.get(s.id, 0) }}</td>
           <td class="text-end">{{ given.get(s.id, 0)|inr }}</td>
           <td>
-            <span class="badge text-bg-{{ {'active':'success','scheduled':'info',
-                                           'expired':'warning','inactive':'secondary'}[state] }}">
+            <span class="badge text-bg-{{ {'active':'success','scheduled':'warning',
+                                           'expired':'secondary','inactive':'secondary'}[state] }}">
               {{ {'inactive':'switched off'}.get(state, state) }}</span>
           </td>
           <td class="text-nowrap">

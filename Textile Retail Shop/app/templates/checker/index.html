@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<h4 class="mb-3"><i class="bi bi-search"></i> Stock check</h4>
+<div class="page-head">
+  <div>
+    <h4><i class="bi bi-search"></i> Stock check</h4>
+    <div class="page-sub">Scan or filter to find an item and where it is</div>
+  </div>
+</div>
 
 {# The fast path, kept alone and first: with the garment in hand nothing else on
    this page matters. A scanner types the code and presses Enter for you. #}
@@ -82,7 +87,7 @@
 <div class="row g-3">
   <div class="col-lg-7">
     <div class="card">
-      <div class="p-2 border-bottom"><strong>Bills this went out on</strong></div>
+      <div class="card-header"><i class="bi bi-receipt"></i> Bills this went out on</div>
       <div class="table-responsive" style="max-height:320px">
         <table class="table table-sm mb-0">
           <thead><tr><th>Bill</th><th>When</th><th>Customer</th>
@@ -107,7 +112,7 @@
 
   <div class="col-lg-5">
     <div class="card">
-      <div class="p-2 border-bottom"><strong>Piece tags</strong>
+      <div class="card-header"><i class="bi bi-tags"></i> Piece tags
         <span class="text-muted small">issued by the warehouse</span></div>
       <div class="p-2" style="max-height:320px;overflow:auto">
         {% for u in units %}
@@ -120,7 +125,7 @@
         {% endfor %}
       </div>
       {% if units %}
-      <div class="p-2 border-top small text-muted">
+      <div class="card-footer">
         A tag says the warehouse minted it, not that the piece is still on a shelf —
         nothing marks a piece sold.
       </div>
@@ -133,7 +138,7 @@
 {# The other question: no code, a customer asking for something. #}
 {% if not code %}
 <form class="card p-3">
-  <div class="mb-2"><strong>Or find one by what it is</strong></div>
+  <h6><i class="bi bi-funnel"></i> Or find one by what it is</h6>
   <div class="row g-2">
     <div class="col-md-4">
       <label class="form-label mb-0 small">Name or SKU</label>
@@ -168,7 +173,9 @@
 
 {% if results %}
 <div class="card mt-3">
-  <div class="p-2 border-bottom"><strong>{{ results|length }}</strong> item(s)</div>
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <span><i class="bi bi-list-ul"></i> Results</span>
+    <span class="panel-chip">{{ results|length }} item(s)</span></div>
   <div class="table-responsive">
     <table class="table table-hover mb-0 align-middle">
       <thead><tr><th>SKU</th><th>Item</th><th>Attributes</th>

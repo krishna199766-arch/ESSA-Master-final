@@ -5,7 +5,7 @@
    this sale is worked out from it — see routes/staff.py. Checkout stays disabled
    until it is answered, rather than letting a cart be built and refused at the
    very end. #}
-<div id="staffGate" class="card p-3 mb-3" style="border:1px solid #d9c9a8; background:#fffdf6;">
+<div id="staffGate" class="card p-3 mb-3 pos-strip">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
       <h6 class="mb-1"><i class="bi bi-person-badge"></i> Who is serving this customer?</h6>
@@ -48,17 +48,20 @@
    on the next bill, and a till that has been left set to the wrong branch is
    only discoverable if the answer is on screen while somebody is using it. The
    same reason the staff gate above sits here. #}
-<div id="placeBar" class="card p-2 mb-3" style="border:1px solid #cfd8e3; background:#f7fafd;">
+<div id="placeBar" class="card p-2 px-3 mb-3 pos-strip">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div class="d-flex align-items-center gap-3 flex-wrap small">
-      <span><span class="text-muted">COMPANY</span>
+      <span><span class="text-muted pos-strip-label">COMPANY</span>
         <b id="pbCompany">{{ (chosen_company or default_company).name }}</b>
-        <span id="pbGstin" class="text-muted">{{ (chosen_company or default_company).gstin or '' }}</span></span>
-      <span><span class="text-muted">LOCATION</span>
+        <span id="pbGstin" class="text-muted font-monospace">{{ (chosen_company or default_company).gstin or '' }}</span></span>
+      <span class="sep d-none d-md-inline" aria-hidden="true">|</span>
+      <span><span class="text-muted pos-strip-label">LOCATION</span>
         <b id="pbLocation">{{ chosen_location.name if chosen_location else 'Select Location' }}</b></span>
-      <span><span class="text-muted">FLOOR</span>
+      <span class="sep d-none d-md-inline" aria-hidden="true">|</span>
+      <span><span class="text-muted pos-strip-label">FLOOR</span>
         <b id="pbFloor">{{ chosen_floor.name if chosen_floor else 'Not mapped' }}</b></span>
-      <span><span class="text-muted">COUNTER</span>
+      <span class="sep d-none d-md-inline" aria-hidden="true">|</span>
+      <span><span class="text-muted pos-strip-label">COUNTER</span>
         <b id="pbCounter">{{ chosen_counter.name if chosen_counter else 'Select Counter' }}</b></span>
     </div>
     <div class="d-flex align-items-center gap-2">
@@ -81,7 +84,7 @@
     </div>
   </div>
   {% if not next_bill.mapped %}
-  <div id="pbUnmapped" class="small mt-1" style="color:#8a6d3b">
+  <div id="pbUnmapped" class="small mt-1" style="color:#B45309">
     <i class="bi bi-exclamation-triangle"></i>
     No floor is set for this till, so its bills are numbered
     <code>{{ next_bill.number }}</code> rather than from a floor's own series.
@@ -175,7 +178,7 @@
             <div>
               <div class="fw-bold" id="custName">-</div>
               <div class="small text-muted"><i class="bi bi-telephone"></i> <span id="custPhone">-</span></div>
-              <div class="small"><span class="badge bg-warning text-dark" id="custPoints">0 pts</span>
+              <div class="small"><span class="badge text-bg-info" id="custPoints">0 pts</span>
                 <span class="text-muted ms-1" id="custStats"></span></div>
             </div>
             <button id="custClear" class="btn btn-sm btn-outline-danger" title="Clear"><i class="bi bi-x"></i></button>
@@ -244,7 +247,7 @@
             <div id="ptsHelp" class="small text-muted mt-1">Attach a customer to redeem points.</div>
           </div>
         </div>
-        <div class="d-flex justify-content-between mt-2"><strong>Total</strong><strong id="grandTotal" style="color:var(--brand-dark)">₹0.00</strong></div>
+        <div class="d-flex justify-content-between align-items-center mt-2 pos-total-row"><strong>Total</strong><strong id="grandTotal" class="pos-total" style="color:var(--brand-dark)">₹0.00</strong></div>
 
         <!-- How this bill is being paid, for the sale that is paid ONE way.
              That is nearly every sale, and sending it through the settlement
@@ -290,7 +293,7 @@
                    placeholder="Reference (optional)">
           </div>
 
-          <div id="qpWarn" class="small mt-1 d-none" style="color:#b23b3b"></div>
+          <div id="qpWarn" class="small mt-1 d-none" style="color:#BE123C"></div>
         </div>
 
         <button id="checkoutBtn" class="btn btn-brand w-100 mt-2">
@@ -318,7 +321,7 @@
     <div class="modal-body">
       <div class="d-flex justify-content-between align-items-baseline mb-3">
         <span class="text-muted">Amount due</span>
-        <span class="fs-3 fw-bold" id="stDue" style="color:var(--brand-dark)">₹0.00</span>
+        <span class="fs-3 fw-bold pos-total" id="stDue" style="color:var(--brand-dark)">₹0.00</span>
       </div>
 
       <div class="row g-2 mb-2 small text-muted d-none d-md-flex">
@@ -526,7 +529,7 @@ function paintPromotions(){
         <i class="bi bi-gift text-success"></i>
         <strong>${a.name}</strong>${a.times > 1 ? ' × ' + a.times : ''}
         <div class="small text-muted">${a.description}</div>
-        ${a.note ? `<div class="small" style="color:#8a6d3b">${a.note}</div>` : ''}
+        ${a.note ? `<div class="small" style="color:#B45309">${a.note}</div>` : ''}
         ${a.options && a.options.length ? `
           <select class="form-select form-select-sm mt-1 promo-pick" data-scheme="${a.scheme_id}">
             ${a.rewards.map((r) => `<option value="${r.product_id}" selected>${r.name}</option>`).join('')}
@@ -542,14 +545,14 @@ function paintPromotions(){
   // who has earned a free garment the shop hasn't got must be told at the
   // counter, by the person taking their money.
   const notices = promoNotices.map((n) => `
-    <div class="d-flex gap-2 align-items-start py-1" style="color:#8a1c1c">
+    <div class="d-flex gap-2 align-items-start py-1" style="color:#9F1239">
       <i class="bi bi-exclamation-triangle"></i>
       <div class="small">${n.message}</div>
     </div>`).join('');
 
   box.className = 'mb-2 p-2 border rounded';
-  box.style.background = promoAwards.length ? '#f2f8f2' : '#fdf4f4';
-  box.style.borderColor = promoAwards.length ? '#c9e2c9' : '#e5c9c9';
+  box.style.background = promoAwards.length ? '#F5FBF7' : '#FFF1F2';
+  box.style.borderColor = promoAwards.length ? '#C1DDD2' : '#FECDD3';
   box.innerHTML = awards + notices;
 
   document.querySelectorAll('.promo-pick').forEach((s) => s.onchange = (e) => {
@@ -917,7 +920,7 @@ function paintSettle(){
   document.getElementById('stBalLabel').innerText =
     balance > 0 ? 'Still to pay' : balance < 0 ? 'Over by' : 'Balance';
   document.getElementById('stBalance').style.color =
-    balance === 0 ? 'var(--brand-dark)' : '#b23b3b';
+    balance === 0 ? 'var(--brand-dark)' : '#BE123C';
   const changeRow = document.getElementById('stChangeRow');
   changeRow.style.setProperty('display', change > 0 ? 'flex' : 'none', 'important');
   document.getElementById('stChange').innerText = fmt(change);

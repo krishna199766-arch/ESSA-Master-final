@@ -3,7 +3,7 @@
   "short_name": "Store",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F5F2F0",
-  "theme_color": "#4B2509",
+  "background_color": "#F7F9F7",
+  "theme_color": "#0B3D2E",
   "icons": []
 }

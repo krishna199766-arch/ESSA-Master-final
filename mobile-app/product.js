@@ -35,7 +35,7 @@ export default function DetailScreen({ api, product, options, onBack, onSaved, e
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={s.topbar}>
-        <TouchableOpacity onPress={onBack}><Text style={[s.link, { marginTop: 0 }]}>‹ {backLabel || 'Back'}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onBack}><Text style={[s.link, s.topLink]}>‹ {backLabel || 'Back'}</Text></TouchableOpacity>
         <Text style={s.topTitle} numberOfLines={1}> </Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
@@ -75,7 +75,7 @@ export default function DetailScreen({ api, product, options, onBack, onSaved, e
           ? <Text style={[s.hint, { color: C.ok }]}>Already detailed by {product.detailed_by || '—'}. Saving updates it.</Text>
           : <Text style={s.hint}>Saving marks this item detailed and confirms its QR code.</Text>}
         <TouchableOpacity style={[s.btn, { marginTop: 8 }]} onPress={save} disabled={busy}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Save details</Text>}
+          {busy ? <ActivityIndicator color={C.onChrome} /> : <Text style={s.btnText}>Save details</Text>}
         </TouchableOpacity>
         <View style={{ height: 20 }} />
       </ScrollView>

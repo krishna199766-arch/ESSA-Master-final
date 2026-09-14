@@ -248,7 +248,7 @@ function AiLogo({ size = 120 }) {
     <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="lg" x1="0" y1="0" x2="120" y2="120">
-          <stop offset="0" stopColor="#7A4C3D" /><stop offset="1" stopColor="#5A3428" />
+          <stop offset="0" stopColor="#2F8F68" /><stop offset="1" stopColor="#0B3D2E" />
         </linearGradient>
       </defs>
       {/* gradient ring + a rotating orbit dot for flair */}
@@ -286,8 +286,9 @@ function LoginScreen({ onLogin }) {
       {phase === 'form' && <>
         {[0, 1, 2, 3, 4].map((i) => <div key={i} className={'smoke smoke-' + i} />)}
         <form className="login-card" onSubmit={submit}>
-          <div className="login-brand">ESSA <span>·</span> AI</div>
-          <div className="login-sub">Document Intelligence · sign in to continue</div>
+          <div className="login-brand"><span className="th-logo" aria-hidden="true">E</span>
+            Essa <span>· ERP</span></div>
+          <div className="login-sub">Enterprise ERP · sign in to continue</div>
           <div className="field"><label>Username</label>
             <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus /></div>
           <div className="field"><label>Password</label>
@@ -5510,10 +5511,10 @@ function VisionSettings({ onClose, onChanged, toast }) {
 
   const on = st?.vision_enabled
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(42,35,32,.45)', zIndex: 100,
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,61,46,.4)', zIndex: 100,
       display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
-      <div style={{ width: 540, background: 'var(--panel)', border: '1px solid var(--line)',
-        borderRadius: 12, padding: 24 }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ width: 540, maxWidth: 'calc(100vw - 32px)', background: 'var(--panel)', border: '1px solid var(--line)',
+        borderRadius: 12, padding: 24, boxShadow: 'var(--shadow-3)' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>👁 Vision extraction</h2>
           <div className="spacer" style={{ flex: 1 }} />
@@ -6373,11 +6374,25 @@ function PurchaseOrdersView({ toast }) {
     } catch (e) { toast(e.detail || 'Could not change the status', 'err') }
     finally { setBusy(false) }
   }
+  // Why an order may not be deleted, or null when it may. The same rule the
+  // server keeps (services/purchase_orders.DELETABLE, and never an order a
+  // consignment cites) — asked here so the icon can say so before anyone presses.
+  const cannotDelete = (r) => (r.linked_lr_count
+    ? `${r.linked_lr_count} consignment${r.linked_lr_count === 1 ? ' is' : 's are'} booked against ${r.po_no} — it cannot be deleted`
+    : r.status === 'draft' || r.status === 'cancelled' ? null
+      : `${r.po_no} is ${r.status} — cancel it first, so it is on record that it was called off`)
   const remove = async (e, r) => {
     e.stopPropagation()
-    if (!window.confirm(`Delete draft ${r.po_no}? This cannot be undone.`)) return
-    try { await api.poDelete(r.id); toast(`${r.po_no} deleted`, 'ok'); refresh() }
-    catch (err) { toast(err.detail || 'Could not delete it', 'err') }
+    const why = cannotDelete(r)
+    if (why) { toast(why, 'warn'); return }
+    if (!window.confirm(r.status === 'draft'
+      ? `Delete draft ${r.po_no}? This cannot be undone.`
+      : `Delete cancelled order ${r.po_no}? It will be removed from the order book. This cannot be undone.`)) return
+    try {
+      await api.poDelete(r.id); toast(`${r.po_no} deleted`, 'ok')
+      if (form?.id === r.id) setForm(null)
+      refresh()
+    } catch (err) { toast(err.detail || 'Could not delete it', 'err') }
   }
 
   const count = (s) => rows.filter((r) => r.status === s).length
@@ -6448,7 +6463,7 @@ function PurchaseOrdersView({ toast }) {
                   <th style={{ width: 60, textAlign: 'right' }}>Lines</th>
                   <th style={{ width: 100, textAlign: 'right' }}>Total</th>
                   <th style={{ width: 96 }}>Status</th>
-                  <th style={{ width: 190 }}>Actions</th>
+                  <th style={{ width: 260 }}>Actions</th>
                 </tr></thead>
                 <tbody>
                   {page.slice.map((r) => (
@@ -6461,15 +6476,16 @@ function PurchaseOrdersView({ toast }) {
                       <td style={{ textAlign: 'right' }}>{money(r.total)}</td>
                       <td><span className={'badge ' + r.status}>{r.status}</span></td>
                       <td onClick={(e) => e.stopPropagation()}>
+                        <div className="rowacts">
                         {/* Only the moves this order can actually make. A button
                             that is always drawn and sometimes refused teaches
                             people to expect errors. */}
                         {r.status === 'draft' && <button className="btn" disabled={busy}
-                          style={{ padding: '2px 8px', marginRight: 4 }}
+                          style={{ padding: '2px 8px' }}
                           onClick={() => move(r, 'pending')}>Send</button>}
                         {(r.status === 'draft' || r.status === 'pending') && (
                           <button className="btn primary" disabled={busy}
-                            style={{ padding: '2px 8px', marginRight: 4 }}
+                            style={{ padding: '2px 8px' }}
                             title={r.blockers?.length ? 'Needs ' + r.blockers.join(', ') : 'Agreed — allow goods against it'}
                             onClick={() => move(r, 'confirmed')}>Confirm</button>
                         )}
@@ -6480,15 +6496,37 @@ function PurchaseOrdersView({ toast }) {
                             to expect errors. */}
                         {r.status !== 'cancelled' && !r.linked_lr_count && (
                           <button className="btn" disabled={busy}
-                            style={{ padding: '2px 8px', marginRight: 4 }}
+                            style={{ padding: '2px 8px' }}
                             onClick={() => move(r, 'cancelled')}>Cancel</button>
                         )}
                         {!!r.linked_lr_count && r.status !== 'cancelled' && (
                           <span className="small" title="A consignment has been booked in against this order">
                             {r.linked_lr_count} consignment{r.linked_lr_count === 1 ? '' : 's'}</span>
                         )}
-                        {r.status === 'draft' && <button className="rowdel"
-                          title="Delete this draft" onClick={(e) => remove(e, r)}>×</button>}
+                        {/* Edit and delete as icons, on every row, always in the
+                            same place. An order that can no longer be changed
+                            offers a VIEW instead of an edit, and a delete the
+                            server would refuse is drawn greyed — pressing it says
+                            why rather than failing. */}
+                        <span className="rowacts-icons">
+                          {(r.editable ?? (r.status === 'draft' || r.status === 'pending')) ? (
+                            <button className="rowact" onClick={() => openEdit(r)}
+                              title={`Edit ${r.po_no}`} aria-label={`Edit ${r.po_no}`}>
+                              <Icon name="pencil" size={15} /></button>
+                          ) : (
+                            <button className="rowact" onClick={() => openEdit(r)}
+                              title={`View ${r.po_no} — a ${r.status} order cannot be edited`}
+                              aria-label={`View ${r.po_no}`}>
+                              <Icon name="eye" size={15} /></button>
+                          )}
+                          <button className={'rowact danger' + (cannotDelete(r) ? ' off' : '')}
+                            aria-disabled={cannotDelete(r) ? 'true' : undefined}
+                            onClick={(e) => remove(e, r)}
+                            title={cannotDelete(r) || `Delete ${r.po_no}`}
+                            aria-label={`Delete ${r.po_no}`}>
+                            <Icon name="trash" size={15} /></button>
+                        </span>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -10332,7 +10370,7 @@ function NotificationBell({ onOpen, tick }) {
       title={err === 'restart'
         ? 'The server is running code from before notifications existed — restart it'
         : unread ? `${unread} unread notification${unread === 1 ? '' : 's'}` : 'Notifications — nothing unread'}>
-      🔔{unread > 0 && <span className={'bellcount' + (counts.critical ? ' crit' : '')}>{unread}</span>}
+      <Icon name="bell" size={18} />{unread > 0 && <span className={'bellcount' + (counts.critical ? ' crit' : '')}>{unread}</span>}
     </button>
   )
 }
@@ -12250,10 +12288,10 @@ function ChangePassword({ onClose, toast }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(42,35,32,.45)', zIndex: 100,
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,61,46,.4)', zIndex: 100,
       display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
-      <div style={{ width: 380, background: 'var(--panel)', border: '1px solid var(--line)',
-        borderRadius: 12, padding: 24 }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ width: 380, maxWidth: 'calc(100vw - 32px)', background: 'var(--panel)', border: '1px solid var(--line)',
+        borderRadius: 12, padding: 24, boxShadow: 'var(--shadow-3)' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>Change password</h2>
           <div style={{ flex: 1 }} />
@@ -13183,7 +13221,7 @@ function CentralDashboard({ toast, go, onEnter }) {
     <div className="screen scrolls">
       <div className="pagehead">
         <h2>Central Dashboard</h2>
-        <span className="spacer" />
+        <div className="pagesub">Every warehouse at once — stock, value, stores, POS sales and what moved</div>
         <select value={scope || ''} style={{ minWidth: 200 }}
           onChange={(e) => setScope(e.target.value ? +e.target.value : null)}
           title="Scope the tiles and the chart to one warehouse">
@@ -13273,7 +13311,7 @@ function CentralDashboard({ toast, go, onEnter }) {
                         {/* The way IN. Everything from here — LR entry, invoices,
                             GRN, inventory, labels, outward, inward, returns —
                             then shows this warehouse's work and nobody else's. */}
-                        <td><button className="btn primary" style={{ padding: '2px 10px' }}
+                        <td><button className="btn" style={{ padding: '2px 10px' }}
                           title={`Work inside ${w.name} — every screen shows only its own`}
                           onClick={(e) => { e.stopPropagation(); onEnter && onEnter(w) }}>
                           Open →</button></td>
@@ -14112,7 +14150,7 @@ const atLeast = (role, need) => rank(role) >= rank(need)
 
 const MODULES = [
   // Drawn at the very top of the menu, above the warehouse Dashboard — see the
-  // NavMenu items below, which hoists it out of this list. It stays HERE so it
+  // sidebar items below, which hoist it out of this list. It stays HERE so it
   // is gated like every other module rather than being a special case.
   { key: 'central', icon: '🏦', label: 'Central Dashboard', blurb: 'Every warehouse at once — stock, value and what moved', min: 'admin' },
   // First in the menu because it is first in the chain — the order is raised
@@ -14269,49 +14307,236 @@ function PosScreen({ screen, available, error, warehouse: wh }) {
   )
 }
 
-// The one navigation control. It says which screen is open even while closed,
-// because a collapsed navigation that doesn't say where you are is how someone
-// loses the screen and re-opens the menu only to find out. `items` may hold a
-// null, which draws a rule — that is what separates the dashboard from the
-// modules it leads into. Warehouse and POS are the same control with different
-// contents; nothing about it was ever specific to the warehouse.
-function NavMenu({ tab, setTab, items, icon, label, hint }) {
-  const [open, setOpen] = useState(false)
-  const wrap = useRef(null)
-  useEffect(() => {
-    if (!open) return
-    const away = (e) => { if (wrap.current && !wrap.current.contains(e.target)) setOpen(false) }
-    const esc = (e) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', away)
-    document.addEventListener('keydown', esc)
-    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc) }
-  }, [open])
+// ==========================================================================
+//  The shell's own pieces — icons, the sidebar, the jump-to-screen palette
+//  ------------------------------------------------------------------------
+//  Line icons drawn inline (24px grid, 2px stroke) rather than a dependency:
+//  the shell needs forty of them, and a package several times the size of this
+//  set is not worth it for the chrome.
+// ==========================================================================
+const ICONS = {
+  dashboard: <><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></>,
+  grid: <><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /></>,
+  search: <><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>,
+  spreadsheet: <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M8 13h2M14 13h2M8 17h2M14 17h2" /></>,
+  filetext: <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8M16 13H8M16 17H8" /></>,
+  pin: <><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /><circle cx="12" cy="10" r="3" /></>,
+  users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
+  usercheck: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="m16 11 2 2 4-4" /></>,
+  cart: <><circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" /><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" /></>,
+  truck: <><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" /><path d="M15 18H9" /><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" /><circle cx="17" cy="18" r="2" /><circle cx="7" cy="18" r="2" /></>,
+  clipcheck: <><rect width="8" height="4" x="8" y="2" rx="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="m9 14 2 2 4-4" /></>,
+  boxes: <><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5M12 22V12" /></>,
+  shield: <><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></>,
+  calc: <><rect width="16" height="20" x="4" y="2" rx="2" /><path d="M8 6h8M16 14v4M16 10h.01M12 10h.01M8 10h.01M12 14h.01M8 14h.01M12 18h.01M8 18h.01" /></>,
+  tag: <><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" /><circle cx="7.5" cy="7.5" r="1" /></>,
+  octagon: <><path d="M12 16h.01M12 8v4" /><path d="M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z" /></>,
+  qr: <><rect width="5" height="5" x="3" y="3" rx="1" /><rect width="5" height="5" x="16" y="3" rx="1" /><rect width="5" height="5" x="3" y="16" rx="1" /><path d="M21 16h-3a2 2 0 0 0-2 2v3M21 21v.01M12 7v3a2 2 0 0 1-2 2H7M3 12h.01M12 3h.01M12 16v.01M16 12h1M21 12v.01M12 21v-1" /></>,
+  printer: <><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6" /><rect x="6" y="14" width="12" height="8" rx="1" /></>,
+  outward: <path d="m18 9-6-6-6 6M12 3v14M5 21h14" />,
+  inward: <path d="M12 17V3M6 11l6 6 6-6M19 21H5" />,
+  undo: <><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></>,
+  rupee: <path d="M6 3h12M6 8h12M6 13l8.5 8M6 13h3M9 13c6.667 0 6.667-10 0-10" />,
+  factory: <><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" /><path d="M17 18h1M12 18h1M7 18h1" /></>,
+  sliders: <path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4" />,
+  book: <><path d="M12 7v14" /><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" /></>,
+  building: <><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" /><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4" /></>,
+  store: <><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" /><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4M2 7h20M22 7v3a2 2 0 0 1-2 2 2.7 2.7 0 0 1-2-1 2.7 2.7 0 0 1-2 1 2.7 2.7 0 0 1-2-1 2.7 2.7 0 0 1-2 1 2.7 2.7 0 0 1-2-1 2.7 2.7 0 0 1-2 1 2.7 2.7 0 0 1-2-1 2.7 2.7 0 0 1-2 1 2 2 0 0 1-2-2V7" /></>,
+  trending: <path d="M22 7 13.5 15.5 8.5 10.5 2 17M16 7h6v6" />,
+  card: <><rect width="20" height="14" x="2" y="5" rx="2" /><path d="M2 10h20" /></>,
+  receipt: <><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" /><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 17.5v-11" /></>,
+  scissors: <><circle cx="6" cy="6" r="3" /><path d="M8.12 8.12 12 12M20 4 8.12 15.88" /><circle cx="6" cy="18" r="3" /><path d="M14.8 14.8 20 20" /></>,
+  layers: <><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65M22 12.65l-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" /></>,
+  percent: <><path d="M19 5 5 19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></>,
+  x: <path d="M18 6 6 18M6 6l12 12" />,
+  pencil: <><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" /></>,
+  trash: <><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><path d="M10 11v6M14 11v6" /></>,
+  panelClose: <><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18M16 15l-3-3 3-3" /></>,
+  panelOpen: <><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18M14 9l3 3-3 3" /></>,
+  chevron: <path d="m9 18 6-6-6-6" />,
+  menu: <path d="M4 12h16M4 6h16M4 18h16" />,
+  bell: <><path d="M10.268 21a2 2 0 0 0 3.464 0" /><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /></>,
+  eye: <><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></>,
+  cpu: <><rect width="16" height="16" x="4" y="4" rx="2" /><rect width="6" height="6" x="9" y="9" rx="1" /><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2" /></>,
+  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
+  upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5M12 3v12" /></>,
+  plus: <path d="M5 12h14M12 5v14" />,
+}
 
-  const here = items.find((m) => m && m.key === tab)
+function Icon({ name, size = 16, className }) {
   return (
-    <div className="navmenu" ref={wrap}>
-      <button className={'navmenu-btn' + (here ? ' active' : '') + (open ? ' open' : '')}
-        aria-haspopup="menu" aria-expanded={open}
-        title={here ? `${label} — ${here.label} is open. Click for the other screens.` : hint}
-        onClick={() => setOpen((o) => !o)}>
-        <span aria-hidden="true">{icon}</span> {label}
-        {here && <span className="where">{here.label}</span>}
-        <span className="caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
-      </button>
-      {open && (
-        <div className="navmenu-pop" role="menu">
-          {items.map((m, i) => (m ? (
-            <button key={m.key} role="menuitem" title={m.blurb}
-              className={'navmenu-item' + (m.key === tab ? ' on' : '')}
-              onClick={() => { setTab(m.key); setOpen(false) }}>
-              <span className="ico" aria-hidden="true">{m.icon}</span>
-              <span className="txt">
-                <span className="lbl">{m.label}</span>
-              </span>
-            </button>
-          ) : <div key={'sep' + i} className="navmenu-sep" role="separator" />))}
+    <svg className={'ico-svg' + (className ? ' ' + className : '')} width={size} height={size}
+      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      {ICONS[name] || ICONS.dashboard}
+    </svg>
+  )
+}
+
+// Which mark each screen wears in the sidebar, the palette and the module cards.
+const NAV_ICON = {
+  central: 'dashboard', dashboard: 'dashboard', pickwh: 'building',
+  purchase_orders: 'cart', lr: 'truck', documents: 'filetext', purchases: 'clipcheck',
+  inventory: 'boxes', locator: 'search', stock_audit: 'shield', physical_audit: 'calc',
+  pricing: 'tag', deadstock: 'octagon', labels: 'qr', labelprint: 'printer',
+  outward: 'outward', inward: 'inward', returns: 'undo', payments: 'rupee',
+  reports: 'spreadsheet', suppliers: 'factory', masters: 'sliders', catalogues: 'book',
+  locations: 'pin', users: 'users',
+  'pos:home': 'dashboard', 'pos:floor': 'trending', 'pos:counter': 'card',
+  'pos:delivery': 'truck', 'pos:inventory': 'boxes', 'pos:audits': 'clipcheck',
+  'pos:checker': 'search', 'pos:customers': 'usercheck', 'pos:invoices': 'receipt',
+  'pos:returns': 'undo', 'pos:alterations': 'scissors', 'pos:stores': 'layers',
+  'pos:promotions': 'percent', 'pos:staff': 'users', 'pos:reports': 'spreadsheet',
+  'ws:central': 'grid', 'ws:warehouse': 'building', 'ws:store': 'store',
+}
+
+// Two letters for the avatar: the initials of a two-word name, or the first two
+// letters of a one-word login.
+const initialsOf = (u) => {
+  const words = String(u || '').replace(/[^A-Za-z0-9]+/g, ' ').trim().split(' ').filter(Boolean)
+  if (!words.length) return '?'
+  return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase()
+}
+
+// A rule is only worth drawing BETWEEN two groups — never first, last or twice.
+const tidyRules = (items) => items.filter((m, i, a) =>
+  m || (i > 0 && i < a.length - 1 && a[i - 1] && a.slice(i + 1).some(Boolean)))
+
+// The navigation. It lists the screens of the altitude you are standing at —
+// the company, one warehouse, or that warehouse's store — and marks the one that
+// is open, so where you are is on screen whether or not you are looking for it.
+// `items` may hold a null, which draws a rule between the dashboard and the
+// modules it leads into.
+//
+// Drawn twice from the same list: fixed beside the screen on a wide window, and
+// as a slide-out drawer behind the header's menu button on a narrow one.
+//
+// The fixed one minimizes to a rail of icons rather than disappearing: every
+// screen is still one click away, the open one is still marked, and the way back
+// out is the button at the top of the rail. Folded, each icon's tooltip carries the
+// name that is no longer on screen. Remembered across reloads through the
+// same store the other panels use (useMinimized), so someone who works with it
+// folded finds it folded every morning.
+function NavSidebar({ kind, context, items, tab, go, online, foot, drawer, onClose }) {
+  const [wide, toggleWide] = useMinimized('nav.sidebar', true)
+  const mini = !drawer && !wide
+  useEffect(() => {
+    if (!drawer) return
+    const esc = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', esc)
+    return () => document.removeEventListener('keydown', esc)
+  }, [drawer, onClose])
+
+  const panel = (
+    <aside className={'navside' + (drawer ? '' : ' fixed') + (mini ? ' folded' : '')}
+      role={drawer ? 'dialog' : undefined} aria-modal={drawer ? 'true' : undefined}
+      aria-label={drawer ? 'Navigation menu' : undefined}>
+      {drawer && (
+        <div className="navdrawer-head">
+          <div className="th-brand">
+            <span className="th-logo" aria-hidden="true">E</span>
+            <div className="brand">Essa <span>· ERP</span><small style={{ display: 'block' }}>{kind}</small></div>
+          </div>
+          <button className="th-icon" onClick={onClose} aria-label="Close navigation menu">
+            <Icon name="x" size={20} /></button>
         </div>
       )}
+      <div className="navside-head">
+        {!mini && (
+          <div className="navside-headtx">
+            <div className="navside-kind">{drawer ? 'Active context' : kind}</div>
+            <div className="navside-ctx" title={context}>{context}</div>
+          </div>
+        )}
+        {!drawer && (
+          <button className="navside-toggle" onClick={toggleWide} aria-expanded={wide}
+            title={wide ? 'Minimize the menu to icons — the screen gets the room'
+              : `Show the full menu (${kind} · ${context})`}
+            aria-label={wide ? 'Minimize the menu' : 'Show the full menu'}>
+            <Icon name={wide ? 'panelClose' : 'panelOpen'} size={16} />
+          </button>
+        )}
+      </div>
+      <nav className="navside-list" aria-label={kind}>
+        {tidyRules(items).map((m, i) => (m ? (
+          <button key={m.key} className={'navitem' + (m.key === tab ? ' on' : '')}
+            title={mini ? (m.blurb ? `${m.label} — ${m.blurb}` : m.label) : m.blurb}
+            aria-current={m.key === tab ? 'page' : undefined}
+            onClick={() => { go(m.key); if (drawer) onClose() }}>
+            <Icon name={NAV_ICON[m.key]} />
+            <span className="nm">{m.label}</span>
+            {m.badge && <span className="nb">{m.badge}</span>}
+          </button>
+        ) : <div key={'sep' + i} className="navsep" role="separator" />))}
+      </nav>
+      <div className="navside-foot">
+        <span className={'live' + (online ? '' : ' off')}
+          title={online ? 'Server connected' : 'Connecting…'}><i aria-hidden="true" />
+          <span className="lbl">{online ? 'Server connected' : 'Connecting…'}</span></span>
+        <span className="ver">{foot}</span>
+      </div>
+    </aside>
+  )
+  if (!drawer) return panel
+  return (
+    <div className="navdrawer">
+      <div className="navdrawer-back" onClick={onClose} aria-hidden="true" />
+      {panel}
+    </div>
+  )
+}
+
+// Ctrl+K from anywhere: type part of a screen's name and press Enter. It only
+// offers screens this account can already reach from the sidebar — it is a
+// faster way through the same doors, never a way round them.
+function JumpPalette({ groups, onGo, onClose }) {
+  const [q, setQ] = useState('')
+  const [hi, setHi] = useState(0)
+  const s = q.trim().toLowerCase()
+  const shown = groups
+    .map((g) => ({ ...g, items: g.items.filter((m) => !s
+      || String(m.label).toLowerCase().includes(s)
+      || String(m.blurb || '').toLowerCase().includes(s)) }))
+    .filter((g) => g.items.length)
+  const flat = shown.flatMap((g) => g.items)
+  useEffect(() => { setHi(0) }, [s])
+  const key = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); onClose() }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(flat.length - 1, h + 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(0, h - 1)) }
+    else if (e.key === 'Enter' && flat[hi]) { e.preventDefault(); onGo(flat[hi].key) }
+  }
+  let n = -1
+  return (
+    <div className="jump-back" onMouseDown={onClose}>
+      <div className="jump" role="dialog" aria-modal="true" aria-label="Jump to a screen"
+        onMouseDown={(e) => e.stopPropagation()}>
+        <div className="jump-in">
+          <Icon name="search" />
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={key}
+            placeholder="Jump to a screen…" aria-label="Screen name" />
+          <kbd>Esc</kbd>
+        </div>
+        <div className="jump-list">
+          {!flat.length && <div className="jump-empty">No screen matches “{q}”.</div>}
+          {shown.map((g) => (
+            <div key={g.title}>
+              <div className="jump-group">{g.title}</div>
+              {g.items.map((m) => {
+                n += 1
+                const i = n
+                return (
+                  <button key={g.title + m.key} className={'jump-item' + (i === hi ? ' hi' : '')}
+                    onMouseEnter={() => setHi(i)} onClick={() => onGo(m.key)}>
+                    <Icon name={NAV_ICON[m.key]} />
+                    <span className="tx">{m.label}{m.blurb && <span className="bl">{m.blurb}</span>}</span>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -14890,7 +15115,7 @@ function DashDeadStock({ sum, open }) {
   )
 }
 
-function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStock }) {
+function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStock, here }) {
   const [d, setD] = useState(null)
   const [partial, setPartial] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -14993,9 +15218,10 @@ function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStoc
   return (
     <div className="screen scrolls">
       <div className="pagehead">
-        <h2>Dashboard</h2>
+        <h2>{here?.code && <span className="codechip">{here.code}</span>}
+          {here?.name || 'Dashboard'}</h2>
         <div className="pagesub small">
-          {company || 'Essa'} — {open
+          {here ? 'Warehouse dashboard' : (company || 'Essa')} — {open
             ? `${open} thing${open === 1 ? '' : 's'} waiting on someone`
             : 'nothing is waiting — every queue is clear'}
         </div>
@@ -15107,7 +15333,7 @@ function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStoc
           <div className="modgrid">
             {modules.map((m) => (
               <button key={m.key} className="modcard" onClick={() => go(m.key)} title={m.blurb}>
-                <span className="ico" aria-hidden="true">{m.icon}</span>
+                <span className="ico" aria-hidden="true"><Icon name={NAV_ICON[m.key]} /></span>
                 <span className="lbl">{m.label}</span>
               </button>
             ))}
@@ -15194,25 +15420,29 @@ function useUnsavedGuard(key, dirty) {
   }, [key, dirty])
 }
 
-// The open-tabs strip. Absent entirely until a second tab exists — one tab is
-// not a set of tabs, and a strip showing the only screen you have open is a row
-// of chrome that says nothing.
+// The open-tabs strip. On a wide window it always names the screen that is open,
+// the way the design's workspace tabs do; a tab only offers to close once there
+// is another to land on. On a phone it is absent until a second tab exists (see
+// `.tabstrip.single`) — one tab is not a set of tabs, and there the row is room
+// the scanner and the forms need.
 //
 // It scrolls horizontally rather than wrapping, which is what keeps it to ONE
 // line on a phone: §12's requirement is that this must not eat the room the
 // scanner and the forms need, and a strip that grows to three rows is exactly
 // how that happens.
 function TabStrip({ open, active, setTab, close, label }) {
-  if (!open || open.length < 2) return null
+  if (!open || !open.length) return null
+  const many = open.length > 1
   return (
-    <div className="tabstrip" role="tablist">
+    <div className={'tabstrip' + (many ? '' : ' single')} role="tablist">
       {open.map((k) => (
-        <div key={k} role="tab" aria-selected={k === active}
+        <div key={k} role="tab" aria-selected={k === active} title={label(k)}
           className={'opentab' + (k === active ? ' on' : '')}
           onClick={() => setTab(k)}>
+          <span className="ot-dot" aria-hidden="true" />
           <span className="ot-label">{label(k)}</span>
-          <button className="ot-x" title={`Close ${label(k)}`}
-            onClick={(e) => { e.stopPropagation(); close(k) }}>×</button>
+          {many && <button className="ot-x" title={`Close ${label(k)}`} aria-label={`Close ${label(k)}`}
+            onClick={(e) => { e.stopPropagation(); close(k) }}>×</button>}
         </div>
       ))}
     </div>
@@ -15289,7 +15519,17 @@ export default function App() {
   // `const` above its declaration is a TDZ throw, not undefined. See the note on
   // `canCentral` for the same trap caught the same way.
   const labelFor = (k) => (POS_ITEMS.find((p) => p && p.key === k)
-    || MODULES.find((m) => m.key === k) || {}).label || k
+    || MODULES.find((m) => m.key === k)
+    || (k === DASHBOARD.key && DASHBOARD)
+    || (k === 'pickwh' && { label: 'Choose a warehouse' }) || {}).label || k
+  // The shell's own state: the drawer on a narrow window, the Ctrl+K palette,
+  // the buildings the context bar can switch between, and — when somebody asks
+  // for the Warehouse or Store workspace before choosing a building — which of
+  // the two the warehouse picker should land them in afterwards.
+  const [navOpen, setNavOpen] = useState(false)
+  const [jumpOpen, setJumpOpen] = useState(false)
+  const [whList, setWhList] = useState([])
+  const [pickFor, setPickFor] = useState(null)
   const closeTab = (k) => {
     // §11: unsaved work is protected. Only screens that registered a guard can
     // answer this, which is why an unregistered one closes silently — it has
@@ -15302,7 +15542,7 @@ export default function App() {
     // tab is the least surprising place; the dashboard when there is none.
     if (k === tab) setTab(left[left.length - 1] || (here ? 'dashboard' : homeTab))
   }
-  const enterWarehouse = (w) => {
+  const enterWarehouse = (w, land) => {
     // The dashboard's rows key their id as `warehouse_id`, the Locations tree as
     // `id`. Normalised here so callers can hand over whichever row they have
     // rather than every one of them remembering which shape it holds.
@@ -15310,9 +15550,13 @@ export default function App() {
                          code: w.code, catalogue: w.catalogue })
     setHere(warehouse.get())
     setSel(null); setSelPurchase(null)
+    // Entering lands on the workspace that was asked for — the store's own
+    // dashboard when somebody chose Store before they chose a building.
     // Leaving lands on whichever company screen this account can actually have:
     // the Central Dashboard for an admin, the warehouse picker for the floor.
-    setTab(w ? 'dashboard' : (atLeast(role, 'admin') ? 'central' : 'pickwh'))
+    setTab(w ? (land || (pickFor === 'store' ? 'pos:home' : 'dashboard'))
+      : (atLeast(role, 'admin') ? 'central' : 'pickwh'))
+    setPickFor(null)
   }
   // Both the warehouse and the open tab survive a reload, and they can come back
   // contradicting each other — signed out on the Central Dashboard while inside
@@ -15570,123 +15814,247 @@ export default function App() {
   const storeLabel = stores.length === 1 ? stores[0].name
     : stores.length > 1 ? `Stores · ${stores.length}` : 'Store'
 
+  // The buildings the context bar can switch between. The same read the
+  // warehouse picker makes, narrowed by the server to this account's allotment —
+  // so the dropdown can never offer a warehouse the picker would not. Re-read on
+  // a switch so a renamed or closed one does not linger.
+  useEffect(() => {
+    if (!authed) { setWhList([]); return }
+    let live = true
+    api.locationTree()
+      .then((t) => { if (live) setWhList((t.warehouses || []).filter((w) => w.id && w.active !== false)) })
+      .catch(() => { if (live) setWhList([]) })
+    return () => { live = false }
+  }, [authed, here?.id])
+
+  // Ctrl+K (⌘K) opens the jump palette from anywhere.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'k') {
+        e.preventDefault(); setJumpOpen((o) => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // ------------------------------------------------------------------------
+  //  Which workspace you are standing in
+  //  ----------------------------------------------------------------------
+  //  Central is the company, with no building chosen. Warehouse is one
+  //  building's own screens. Store is that building's shop — the till frame.
+  //  It is DERIVED from where you are rather than stored beside it, so the
+  //  switch in the context bar can never disagree with the screen under it.
+  const ws = !here ? 'central' : String(tab).startsWith('pos:') ? 'store' : 'warehouse'
+  // while the picker is open on behalf of Warehouse or Store, that is the
+  // segment that reads as chosen
+  const wsShown = !here && tab === 'pickwh' && pickFor ? pickFor : ws
+  const goWs = (target) => {
+    setNavOpen(false)
+    if (target === 'central') {
+      setPickFor(null)
+      if (here) enterWarehouse(null); else setTab(homeTab)
+      return
+    }
+    if (here) { setTab(target === 'store' ? 'pos:home' : 'dashboard'); return }
+    // A building has to be chosen first. With only one to choose from, choosing
+    // it for them is not a decision taken away — it is a click saved.
+    if (whList.length === 1) { enterWarehouse(whList[0], target === 'store' ? 'pos:home' : 'dashboard'); return }
+    setPickFor(target); setTab('pickwh')
+  }
+  const pickWarehouse = (id) => {
+    const w = whList.find((x) => String(x.id) === String(id))
+    if (w && String(w.id) !== String(here?.id)) enterWarehouse(w, ws === 'store' ? 'pos:home' : 'dashboard')
+  }
+
+  // What the sidebar lists at each altitude.
+  const navItems = ws === 'store'
+    ? POS_ITEMS.map((p) => (p && p.key === 'pos:counter' ? { ...p, badge: 'POS' } : p))
+    : here
+      ? [DASHBOARD, null, ...modules]
+      : [...modules.filter((m) => m.key === 'central'),
+         ...(canCentral ? [] : [{ key: 'pickwh', label: 'Choose a warehouse',
+           blurb: 'Pick the building you are working in' }]),
+         null, ...modules.filter((m) => m.key !== 'central')]
+  const companyName = status?.company?.name || 'Essa'
+  const navKind = ws === 'store' ? 'Retail Store' : ws === 'warehouse' ? 'Warehouse Ops' : 'Central Admin'
+  const navContext = ws === 'store' ? `${storeLabel} · ${here.name}`
+    : ws === 'warehouse' ? `${here.name}${here.code ? ` (${here.code})` : ''}`
+    : companyName
+  const navFoot = ROLE_LABEL[role] || role || ''
+  // Every door the sidebar offers, grouped — and nothing it does not.
+  const jumpGroups = [
+    ...(here
+      ? [{ title: `Warehouse · ${here.name}`, items: [DASHBOARD, ...modules] },
+         { title: storeLabel, items: POS_ITEMS.filter(Boolean) }]
+      : [{ title: 'Central', items: tidyRules(navItems).filter(Boolean) }]),
+    { title: 'Workspaces', items: [
+      { key: 'ws:central', label: 'Central', blurb: 'The whole company — every warehouse at once' },
+      { key: 'ws:warehouse', label: 'Warehouse', blurb: here ? `Everything at ${here.name}` : 'Choose a building to work inside' },
+      { key: 'ws:store', label: 'Store / POS', blurb: here ? `${storeLabel} — billing, floor sales and store stock` : 'Choose a building, then open its store' },
+    ] },
+  ]
+  const jumpTo = (k) => {
+    setJumpOpen(false)
+    if (String(k).startsWith('ws:')) goWs(k.slice(3)); else setTab(k)
+  }
+
   if (!authChecked) return <div className="login-wrap"><div className="login-bg" /></div>
   if (!authed) return <LoginScreen onLogin={handleLogin} />
 
   return (
     <div className="app">
-      {/* Brand and account actions on one row, navigation on its own below it.
-          The eleven modules are one warehouse, so they sit behind one menu on
-          that row; what the row opens with is the dashboard, which is the only
-          screen that answers "which of the eleven did I need". */}
+      {/* 1. The header: what system this is, the switches that change how it
+          behaves, and who is signed in. */}
       <div className="topbar">
-        <div className="brand">Essa <span>·</span> Document Intake<small>{status?.company?.name} — invoice → data, trained per supplier</small></div>
+        <button className="th-icon th-menu" onClick={() => setNavOpen(true)}
+          aria-label="Open navigation menu" title="Menu"><Icon name="menu" size={20} /></button>
+        <div className="th-brand">
+          <span className="th-logo" aria-hidden="true">E</span>
+          <div className="brand">Essa <span>· Enterprise ERP</span>
+            <small>{companyName} — multi-warehouse inventory &amp; retail supply chain</small></div>
+        </div>
         <div className="spacer" />
+        <button className="th-ctl th-search" onClick={() => setJumpOpen(true)}
+          title="Jump to any screen (Ctrl + K)" aria-label="Jump to a screen">
+          <Icon name="search" size={14} /><span className="ph">Search screens…</span><kbd>Ctrl K</kbd>
+        </button>
         {/* The vision key and model are server-wide settings, so the gear is a
             super admin's. For everyone else the pill still reports whether
             vision is on — that changes how an upload behaves and is worth
             knowing — but it does not open a screen the server would refuse. */}
         {isSuper ? (
-          <button className={'pill ' + (providers.claude_vision ? 'on' : 'off')} style={{ cursor: 'pointer' }}
+          <button className={'pill ' + (providers.claude_vision ? 'on' : 'off')}
             title="Configure vision extraction" onClick={() => setShowSettings(true)}>
-            👁 vision {providers.claude_vision ? 'on' : 'off'} ⚙</button>
+            <Icon name="eye" size={14} /> Vision {providers.claude_vision ? 'on' : 'off'}
+            <span className="dot" aria-hidden="true" /></button>
         ) : (
           <span className={'pill ' + (providers.claude_vision ? 'on' : 'off')}
             title="Vision extraction — a super admin configures this">
-            👁 vision {providers.claude_vision ? 'on' : 'off'}</span>
+            <Icon name="eye" size={14} /> Vision {providers.claude_vision ? 'on' : 'off'}
+            <span className="dot" aria-hidden="true" /></span>
         )}
-        <span className={'pill ' + (providers.tesseract ? 'on' : 'off')}>OCR {providers.tesseract ? 'on' : 'off'}</span>
+        <span className={'pill ocr ' + (providers.tesseract ? 'on' : 'off')}
+          title="Offline OCR extraction engine">
+          <Icon name="cpu" size={14} /> OCR {providers.tesseract ? 'on' : 'off'}</span>
         <NotificationBell onOpen={() => setNotifsOpen(true)} tick={notifTick} />
-        {/* Beside the upload, not instead of it, and quieter than it: reading a
-            photograph is still the way this screen is meant to be used, and
-            typing a bill out is the fallback for the one that has no usable
-            picture. Same label and glyph as LR Entry's, because it is the same
-            gesture — start a record by hand. */}
-        {/* Both of these CREATE AN INVOICE, and an invoice belongs to the
-            warehouse whose desk keyed it — that is what stamps
-            Document.warehouse_id (see routers/documents). Raised from the
-            company view they would land unassigned, showing up on every
-            warehouse's queue and belonging to none; raised from Inventory or
-            Reports they are a gesture with no obvious home.
-
-            So they appear where they mean something: inside a warehouse, on the
-            Invoice Entry screen. Hidden rather than disabled — a permanently
-            greyed button on nine screens out of ten is furniture nobody reads. */}
-        {here && tab === 'documents' && <>
-          <button className="btn" onClick={onNewEntry}
-            title={`Key an invoice in by hand for ${here.name} — for one with no scan, or dictated over the phone`}>
-            📄 New entry</button>
-          <label className="btn primary uploadbtn"
-            title={`One invoice for ${here.name}. Pick both pages together if it is printed on more than one.`}>
-            Upload invoice<input type="file" accept="image/*,.pdf" multiple onChange={onUpload} /></label>
-        </>}
+        <span className="th-div" aria-hidden="true" />
         {/* Who you are signed in as, and at what level. On a shared warehouse
             terminal the second half is the load-bearing one: it is the answer
             to "why can I not see Reports today", visible without asking. */}
-        <span className={'badge role-' + (role || 'user')} style={{ marginLeft: 2 }}
-          title={ROLE_HELP[role] || ''}>{ROLE_LABEL[role] || role}</span>
-        <button className="btn" title="Change your password"
-          onClick={() => setShowPassword(true)}>{user}</button>
-        <button className="btn" title={'Sign out of ' + user} onClick={logout}>Logout</button>
-      </div>
-      {/* Not wrapped in .tabs: that class styles a strip of tab buttons, and its
-          rules (nowrap above all) reach into the menu's own buttons and stop the
-          descriptions wrapping. There is no strip left to style anyway. */}
-      <div className="navbar">
-        {/* WHERE YOU ARE. Loud on purpose: every screen to the right of this is
-            showing one warehouse's work, and a person who has forgotten which
-            will post a receipt into the wrong building. Absent when nobody has
-            gone inside one, so a single-warehouse shop never sees it. */}
-        {here ? (
-          <>
-            <span className="badge confirmed" title={'Working inside ' + here.name}
-              style={{ marginRight: 2 }}>
-              🏢 {here.name}{here.code ? ' · ' + here.code : ''}</span>
-            <button className="btn" style={{ padding: '2px 9px' }}
-              title="Leave this warehouse and go back to the company view"
-              onClick={() => enterWarehouse(null)}>Exit</button>
-            <span className="navsep" aria-hidden="true" />
-          </>
-        ) : null}
-        {/* Central Dashboard sits ABOVE the warehouse Dashboard, and the two are
-            grouped before the separator: they are the same kind of screen at two
-            altitudes — the whole company, then the building in front of you.
-            Hoisted out of `modules` rather than declared separately so it keeps
-            that list's role and permission gating: an account that may not see
-            it simply has no entry to hoist. */}
-        {/* The warehouse Dashboard belongs to a warehouse, so it is only in the
-            list once you are inside one. At company level the Central Dashboard
-            leads, and there is no second dashboard to confuse it with. */}
-        <NavMenu tab={tab} setTab={setTab}
-          items={here
-            ? [DASHBOARD, null, ...modules]
-            : [...modules.filter((m) => m.key === 'central'), null,
-              ...modules.filter((m) => m.key !== 'central')]}
-          icon="🏬" label={here ? 'Warehouse' : 'Company'}
-          hint={here ? `Everything at ${here.name}` : 'The whole business'} />
-        {/* A till belongs to a STORE, and a store belongs to a warehouse. So POS
-            is reachable from inside the warehouse that supplies it, and the
-            frame is told which — see the `wh` parameter, which limits the till's
-            own branch picker to that warehouse's shops. */}
-        {here && <>
-          <span className="navsep" aria-hidden="true" />
-          <NavMenu tab={tab} setTab={setTab} items={POS_ITEMS}
-            icon="🛍" label={storeLabel}
-            hint={stores.length === 1
-              ? `${stores[0].name} — billing, floor sales and store stock`
-              : stores.length > 1
-                ? `The ${stores.length} stores ${here.name} supplies — ${stores.map((s) => s.name).join(', ')}`
-                : `The stores ${here.name} supplies — billing, floor sales and store stock`} />
-        </>}
+        <button className="th-user" onClick={() => setShowPassword(true)}
+          title={`${user} · ${ROLE_LABEL[role] || role}${ROLE_HELP[role] ? ' — ' + ROLE_HELP[role] : ''}\nClick to change your password`}>
+          <span className="th-avatar" aria-hidden="true">{initialsOf(user)}</span>
+          <span className="th-who">
+            <span className="th-role">{ROLE_LABEL[role] || role}</span>
+            <span className="th-name">{user}</span>
+          </span>
+        </button>
+        <button className="th-icon th-logout" title={'Sign out of ' + user} aria-label="Sign out"
+          onClick={logout}><Icon name="logout" /></button>
       </div>
 
+      {/* 2. The context bar. WHERE YOU ARE, loud on purpose: every screen below
+          is showing one altitude's work, and a person who has forgotten which
+          warehouse they are inside will post a receipt into the wrong building. */}
+      <div className="ctxbar">
+        <div className="ctx-left">
+          <div className="wsseg" role="tablist" aria-label="Workspace">
+            <button role="tab" aria-selected={wsShown === 'central'} className={wsShown === 'central' ? 'on' : ''}
+              onClick={() => goWs('central')}
+              title={canCentral ? 'The whole company — every warehouse at once' : 'Leave the building you are in'}>
+              <Icon name="grid" size={14} /> Central</button>
+            <button role="tab" aria-selected={wsShown === 'warehouse'} className={wsShown === 'warehouse' ? 'on' : ''}
+              onClick={() => goWs('warehouse')}
+              title={here ? `Everything at ${here.name}` : 'Choose a building to work inside'}>
+              <Icon name="building" size={14} /> Warehouse</button>
+            {/* A till belongs to a STORE, and a store belongs to a warehouse. So
+                the Store is reached through the warehouse that supplies it, and
+                the frame is told which — see the `wh` parameter, which limits
+                the till's own branch picker to that warehouse's shops. */}
+            <button role="tab" aria-selected={wsShown === 'store'} className={wsShown === 'store' ? 'on' : ''}
+              onClick={() => goWs('store')}
+              title={here
+                ? (stores.length > 1
+                  ? `The ${stores.length} stores ${here.name} supplies — ${stores.map((s) => s.name).join(', ')}`
+                  : `${storeLabel} — billing, floor sales and store stock`)
+                : 'Choose a building, then open its store'}>
+              <Icon name="store" size={14} /> Store / POS</button>
+          </div>
+          <span className="ctx-chev" aria-hidden="true"><Icon name="chevron" size={14} /></span>
+          {!here ? (
+            <span className="ctx-chip">
+              <Icon name={tab === 'pickwh' ? 'building' : 'layers'} size={14} />
+              {tab === 'pickwh' ? 'Choose the warehouse you are working in' : 'Headquarters · Central Administration'}
+            </span>
+          ) : (
+            <label className="ctx-pick" title="Switch to another warehouse — every screen reloads for it">
+              <span>{ws === 'store' ? 'Supplied by' : 'Facility'}</span>
+              <select value={String(here.id)} onChange={(e) => pickWarehouse(e.target.value)}>
+                {!whList.some((w) => String(w.id) === String(here.id)) && (
+                  <option value={String(here.id)}>{here.name}{here.code ? ' · ' + here.code : ''}</option>
+                )}
+                {whList.map((w) => (
+                  <option key={w.id} value={String(w.id)}>{w.name}{w.code ? ' · ' + w.code : ''}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {ws === 'store' && (
+            <span className="ctx-chip" title={stores.map((s) => s.name).join(', ') || 'No store is set up for this warehouse yet'}>
+              <Icon name="store" size={14} />{storeLabel}</span>
+          )}
+        </div>
+        <div className="ctx-right">
+          <span className="meta">
+            {ws === 'central' && <>Company: <b>{companyName}</b>
+              <span className="sep"> | </span>Signed in as <b>{ROLE_LABEL[role] || role}</b></>}
+            {ws === 'warehouse' && <>Code: <b className="mono">{here.code || '—'}</b>
+              <span className="sep"> | </span>Trades in: <b>{here.catalogue || '—'}</b>
+              <span className="sep"> | </span>Stores supplied: <b className="mono">{stores.length}</b></>}
+            {ws === 'store' && <>Warehouse: <b>{here.name}</b>
+              <span className="sep"> | </span>Stores: <b className="mono">{stores.length}</b></>}
+          </span>
+          {/* Both of these CREATE AN INVOICE, and an invoice belongs to the
+              warehouse whose desk keyed it — that is what stamps
+              Document.warehouse_id (see routers/documents). Raised from the
+              company view they would land unassigned, showing up on every
+              warehouse's queue and belonging to none; raised from Inventory or
+              Reports they are a gesture with no obvious home.
+
+              So they appear where they mean something: inside a warehouse, on the
+              Invoice Entry screen. Hidden rather than disabled — a permanently
+              greyed button on nine screens out of ten is furniture nobody reads.
+
+              "New entry" sits beside the upload, not instead of it, and quieter
+              than it: reading a photograph is still the way this screen is meant
+              to be used, and typing a bill out is the fallback for the one that
+              has no usable picture. */}
+          {here && tab === 'documents' && <>
+            <button className="btn" onClick={onNewEntry}
+              title={`Key an invoice in by hand for ${here.name} — for one with no scan, or dictated over the phone`}>
+              <Icon name="plus" size={14} /> New entry</button>
+            <label className="btn primary uploadbtn"
+              title={`One invoice for ${here.name}. Pick both pages together if it is printed on more than one.`}>
+              <Icon name="upload" size={14} /> Upload invoice
+              <input type="file" accept="image/*,.pdf" multiple onChange={onUpload} /></label>
+          </>}
+        </div>
+      </div>
+
+      {/* 3. The open tabs. */}
+      <TabStrip open={alive} active={tab} setTab={setTab} close={closeTab}
+        label={labelFor} />
+
+      {/* 4. The sidebar beside the open screen. */}
+      <div className="shell">
+      <NavSidebar kind={navKind} context={navContext} items={navItems} tab={tab} go={setTab}
+        online={!!status} foot={navFoot} />
+      <main className="shellmain">
       {/* Keyed on the warehouse. Switching one remounts every screen below, so
           each refetches its own data under the new context — the alternative is
           asking fifty components to notice a change, and the one that forgets
           quietly shows the warehouse you just left. */}
-      <TabStrip open={alive} active={tab} setTab={setTab} close={closeTab}
-        label={labelFor} />
-
       <React.Fragment key={'wh-' + (here?.id || 'all')}>
       {denied ? (
         <div className="body"><div className="empty" style={{ margin: 'auto', maxWidth: 420, lineHeight: 1.7 }}>
@@ -15718,7 +16086,14 @@ export default function App() {
         ))
       ) : screenFor(tab)}
       </React.Fragment>
+      </main>
+      </div>
 
+      {navOpen && <NavSidebar drawer kind={navKind} context={navContext} items={navItems}
+        tab={tab} go={setTab} online={!!status} foot={navFoot}
+        onClose={() => setNavOpen(false)} />}
+      {jumpOpen && <JumpPalette groups={jumpGroups} onGo={jumpTo}
+        onClose={() => setJumpOpen(false)} />}
       {scanning && <ScanningOverlay url={scanning.url} name={scanning.name}
         vision={!!providers.claude_vision} />}
       {/* At the app root, not in the header the bell sits in: everything under
@@ -15751,7 +16126,8 @@ export default function App() {
     return (
       k === 'dashboard' ? (
         <Dashboard modules={modules} go={setTab} company={status?.company?.name}
-          docs={docs} refreshDocs={refresh} user={user} openDeadStock={openDeadStock} />
+          docs={docs} refreshDocs={refresh} user={user} openDeadStock={openDeadStock}
+          here={here} />
       ) : k === 'purchase_orders' ? (
         <PurchaseOrdersView toast={toast} />
       ) : k === 'lr' ? (
@@ -15856,7 +16232,8 @@ export default function App() {
         // an unknown saved tab (a module renamed since it was stored) lands on
         // the dashboard rather than on a blank screen
         <Dashboard modules={modules} go={setTab} company={status?.company?.name}
-          docs={docs} refreshDocs={refresh} user={user} openDeadStock={openDeadStock} />
+          docs={docs} refreshDocs={refresh} user={user} openDeadStock={openDeadStock}
+          here={here} />
       )
     )
   }

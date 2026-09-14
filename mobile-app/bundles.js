@@ -45,7 +45,7 @@ function BundleList({ api, onPick, onLogout }) {
       <View style={s.topbar}>
         <Text style={s.topTitle}>Bundles</Text>
         <Text style={s.topCount}>{items.length} shown</Text>
-        <TouchableOpacity onPress={onLogout}><Text style={[s.link, { marginTop: 0 }]}>Logout</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onLogout}><Text style={[s.link, s.topLink]}>Logout</Text></TouchableOpacity>
       </View>
       <View style={{ padding: 12, gap: 8 }}>
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -57,7 +57,7 @@ function BundleList({ api, onPick, onLogout }) {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {['stored', 'opened', 'tagged', 'all'].map((st) => (
             <TouchableOpacity key={st} style={[s.chip, status === st && s.chipOn]} onPress={() => setStatus(st)}>
-              <Text style={[s.chipText, status === st && { color: '#fff' }]}>{st}</Text>
+              <Text style={[s.chipText, status === st && s.chipTextOn]}>{st}</Text>
             </TouchableOpacity>
           ))}
           <TouchableOpacity style={[s.chip, { marginLeft: 'auto' }]} onPress={load}>
@@ -151,7 +151,7 @@ function BundleDetail({ api, bundleId, onBack, onDetailItem, flash }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={s.topbar}>
-        <TouchableOpacity onPress={onBack}><Text style={[s.link, { marginTop: 0 }]}>‹ Bundles</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onBack}><Text style={[s.link, s.topLink]}>‹ Bundles</Text></TouchableOpacity>
         <Text style={[s.topTitle, s.mono]} numberOfLines={1}>{b.code}</Text>
         <Badge text={b.status} tone={tagged ? 'ok' : 'warn'} />
       </View>

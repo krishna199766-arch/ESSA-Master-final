@@ -1,27 +1,40 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="row justify-content-center mt-5">
-  <div class="col-md-4">
-    <div class="card">
-      <div class="card-body p-4">
-        <h3 class="text-center mb-3 fw-bold" style="color: var(--brand-dark);">
-          {{ SHOP_NAME }}
-        </h3>
-        <p class="text-center text-muted mb-4">Sign in to continue</p>
-        <form method="post">
-          <div class="mb-3">
-            <label class="form-label">Username</label>
-            <input class="form-control" name="username" autofocus required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Password</label>
-            <input class="form-control" name="password" type="password" required>
-          </div>
-          <button class="btn btn-brand w-100">Login</button>
-        </form>
-        <p class="text-muted small text-center mt-3">Default: admin / admin123</p>
+<div class="login-wrap">
+  <div class="card login-card">
+    <div class="card-body">
+      <div class="login-brand">
+        <span class="brand-logo" aria-hidden="true">E</span>
+        <div>
+          <h3 class="login-title">{{ SHOP_NAME }}</h3>
+          <p class="login-sub">Sign in to continue</p>
+        </div>
       </div>
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <input class="form-control" name="username" autofocus required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <input class="form-control" name="password" type="password" required>
+        </div>
+        <button class="btn btn-brand w-100 login-btn">Login</button>
+      </form>
+      <p class="login-hint">Default: <code>admin</code> / <code>admin123</code></p>
     </div>
   </div>
 </div>
+<style>
+  .login-wrap { min-height: calc(100vh - 6rem); display: flex; align-items: center; justify-content: center; padding-block: 2rem; }
+  .login-card { width: 100%; max-width: 380px; }
+  .login-card .card-body { padding: 1.75rem; }
+  .login-brand { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.5rem;
+    padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
+  .login-brand .brand-logo { width: 40px; height: 40px; font-size: 1.125rem; }
+  .login-title { font-size: 1.125rem; font-weight: 700; letter-spacing: -.02em; margin: 0; color: var(--text); }
+  .login-sub { font-size: .75rem; color: var(--muted); margin: .125rem 0 0; }
+  .login-btn { --bs-btn-padding-y: .5625rem; --bs-btn-font-size: .8125rem; --bs-btn-font-weight: 600; }
+  .login-hint { font-size: .6875rem; color: var(--muted); text-align: center; margin: 1rem 0 0; }
+</style>
 {% endblock %}

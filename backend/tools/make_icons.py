@@ -16,8 +16,8 @@ import pathlib
 
 from PIL import Image, ImageDraw, ImageFont
 
-BG = (15, 20, 32)          # #0F1420 — the app's own dark chrome
-FG = (79, 140, 255)        # #4F8CFF — its accent
+BG = (11, 61, 46)          # #0B3D2E — the app's own dark forest-green chrome
+FG = (255, 255, 255)       # #FFFFFF — text on chrome, as in its "E" logo chip
 
 HERE = pathlib.Path(__file__).resolve().parent
 MOBILE = HERE.parent / "app" / "mobile"

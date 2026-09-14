@@ -4,20 +4,23 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="24dp"
-    android:gravity="center_vertical">
+    android:gravity="center_vertical"
+    android:background="#F7F9F7">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/setup_title"
         android:textSize="22sp"
-        android:textStyle="bold" />
+        android:textStyle="bold"
+        android:textColor="#17221D" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="@string/setup_help" />
+        android:text="@string/setup_help"
+        android:textColor="#68756E" />
 
     <EditText
         android:id="@+id/host"
@@ -27,14 +30,19 @@
         android:hint="@string/setup_hint"
         android:inputType="textUri"
         android:importantForAutofill="no"
-        android:autofillHints="" />
+        android:autofillHints=""
+        android:textColor="#17221D"
+        android:textColorHint="#68756E"
+        android:backgroundTint="#2F8F68" />
 
     <Button
         android:id="@+id/save"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="@string/setup_connect" />
+        android:text="@string/setup_connect"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="@color/essa_primary_button" />
 
     <ProgressBar
         android:id="@+id/spinner"
@@ -42,12 +50,14 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
         android:layout_marginTop="16dp"
-        android:visibility="gone" />
+        android:visibility="gone"
+        android:indeterminateTint="#2F8F68" />
 
     <TextView
         android:id="@+id/status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:textAlignment="center" />
+        android:textAlignment="center"
+        android:textColor="#68756E" />
 </LinearLayout>

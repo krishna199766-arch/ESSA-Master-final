@@ -145,6 +145,16 @@ move(committed["id"], "confirmed")
 eq("a confirmed one cannot — it is cancelled, not erased",
    client.delete("/api/purchase-orders/%d" % committed["id"],
                  headers=H).status_code, 400)
+sent = mk()
+move(sent["id"], "pending")
+eq("nor can a pending one — the supplier holds it",
+   client.delete("/api/purchase-orders/%d" % sent["id"], headers=H).status_code, 400)
+called_off = mk()
+move(called_off["id"], "cancelled", reason="raised twice")
+eq("once cancelled, it can be cleared off the register",
+   client.delete("/api/purchase-orders/%d" % called_off["id"], headers=H).status_code, 200)
+eq("and it is really gone",
+   client.get("/api/purchase-orders/%d" % called_off["id"], headers=H).status_code, 404)
 
 # ===========================================================================
 head("only confirmed orders are offered for receiving")

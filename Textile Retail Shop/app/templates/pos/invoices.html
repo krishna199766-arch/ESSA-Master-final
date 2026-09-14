@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="page-head">
   <h4><i class="bi bi-receipt"></i> Invoices</h4>
   <div>
     <a href="{{ url_for('pos.invoice_list') }}" class="btn btn-outline-secondary btn-sm">Clear filters</a>
@@ -96,7 +96,7 @@
           </td>
           <td>{{ (i.staff.full_name if i.staff else i.cashier.full_name) }}</td>
           <td><span class="badge bg-secondary">{{ i.payment_method }}</span></td>
-          <td class="text-end fw-bold">{{ i.total|inr }}</td>
+          <td class="text-end fw-bold" style="color:var(--brand-dark)">{{ i.total|inr }}</td>
           <td>
             <a href="{{ url_for('pos.view_invoice', iid=i.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
             <a href="{{ url_for('pos.print_invoice', iid=i.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-printer"></i></a>

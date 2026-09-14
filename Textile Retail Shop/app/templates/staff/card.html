@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}ID card — {{ staff.full_name }}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
+<div class="page-head d-print-none">
   <h4><i class="bi bi-person-badge"></i> Staff ID card</h4>
   <div>
     <button onclick="window.print()" class="btn btn-brand btn-sm"><i class="bi bi-printer"></i> Print card</button>
@@ -35,7 +35,7 @@
   .staff-shop { font-weight: 700; letter-spacing: .5px; font-size: 13px; }
   .staff-tag {
     font-size: 10px; font-weight: 700; letter-spacing: 1px;
-    background: #0f1420; color: #fff; border-radius: 4px; padding: 2px 8px;
+    background: #0B3D2E; color: #fff; border-radius: 6px; padding: 2px 8px;
   }
   .staff-name { font-size: 19px; font-weight: 700; margin-top: 12px; }
   .staff-role { font-size: 12px; color: #555; margin-bottom: 10px; }

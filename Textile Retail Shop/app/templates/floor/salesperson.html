@@ -5,7 +5,7 @@
 <!-- Step indicator -->
 <div id="stepBar" class="mb-3 no-print">
   <div class="d-flex align-items-center gap-2">
-    <span class="badge" style="background:var(--brand)">{{ s.code }}</span>
+    <span class="badge">{{ s.code }}</span>
     <span id="statusBadge" class="badge bg-secondary">{{ s.status }}</span>
     <div class="ms-auto d-flex gap-1">
       <div class="step-dot" data-step="basket" title="Basket"><i class="bi bi-basket"></i> Basket</div>
@@ -16,17 +16,30 @@
 </div>
 
 <style>
-.step-dot { padding: 4px 10px; border: 1px solid #ddd; border-radius: 999px; font-size: .75rem; color: #888; }
+/* the steps, as the design's segmented control: dark green for where you are,
+   the tint for what is done */
+#stepBar > .d-flex { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 8px 10px; box-shadow: var(--shadow-1); flex-wrap: wrap; }
+#stepBar .ms-auto { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.step-dot { padding: 5px 10px; border: 1px solid transparent; border-radius: 6px; font-size: .75rem;
+  font-weight: 600; color: #68756E; cursor: pointer; white-space: nowrap; }
 .step-dot.active { background: var(--brand); color: #fff; border-color: var(--brand); }
-.step-dot.done { background: #d7f5df; color: #116329; border-color: #a8e6b8; }
-.big-total { font-size: 2rem; font-weight: 700; color: var(--brand-dark); }
-.basket-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee; }
-.basket-item .name { font-weight: 600; }
-.basket-item .meta { color: #888; font-size: .8rem; }
-.basket-item .amt { color: var(--brand-dark); font-weight: 700; }
+.step-dot.done { background: #E7F4EC; color: #0B3D2E; border-color: rgba(47,143,104,.3); }
+.big-total { font-size: 1.75rem; font-weight: 700; color: var(--brand-dark); font-family: var(--font-mono); letter-spacing: -.02em; }
+.basket-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #DCE5DF; }
+.basket-item:last-child { border-bottom: 0; }
+.basket-item .name { font-weight: 600; font-size: .8125rem; }
+.basket-item .meta { color: #68756E; font-size: .6875rem; font-family: var(--font-mono); letter-spacing: 0; }
+.basket-item .amt { color: var(--brand-dark); font-weight: 700; font-family: var(--font-mono); font-size: .875rem; }
 .qty-controls { display: inline-flex; align-items: center; gap: 6px; }
-.qty-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #ccc; background: #fff; }
-.qty-val { min-width: 36px; text-align: center; font-weight: 600; }
+.qty-btn { width: 40px; height: 40px; border-radius: 8px; border: 1px solid #DCE5DF; background: #F7F9F7;
+  color: #17221D; font-size: 1.125rem; font-weight: 600; line-height: 1; }
+.qty-btn:hover { background: #fff; border-color: #C5D2CA; }
+.qty-btn:active { background: #E7F4EC; }
+.qty-val { min-width: 36px; text-align: center; font-weight: 700; font-family: var(--font-mono); color: var(--brand-dark); }
+.basket-item .rm { min-width: 40px; min-height: 40px; }
+#tSub, #tTax, #tDisc, #tRedeem, #basketSub, #cSub, #cTax, #cDisc, #cRedeem { font-family: var(--font-mono); }
+#stepCustomer .cust-head { background: var(--brand); border-bottom: 1px solid var(--brand-800); color: #fff; padding: 14px 16px; }
 </style>
 
 <!-- ========== STEP 1: BASKET (scan and add) ========== -->
@@ -121,7 +134,7 @@
               <div class="fw-bold" id="custName">-</div>
               <div class="small text-muted"><i class="bi bi-telephone"></i> <span id="custPhone">-</span></div>
               <div class="small">
-                <span class="badge bg-warning text-dark" id="custPoints">0 pts</span>
+                <span class="badge text-bg-info" id="custPoints">0 pts</span>
                 <span class="text-muted ms-1" id="custStats"></span>
               </div>
             </div>
@@ -213,12 +226,15 @@
 
 <!-- ========== STEP 3: CUSTOMER FULL-SCREEN MODE ========== -->
 <div id="stepCustomer" style="display:none; position:fixed; inset:0; background:var(--bg); z-index:1050; overflow-y:auto;">
-  <div style="background:linear-gradient(90deg,var(--brand-dark),var(--brand)); color:#fff; padding:16px;">
-    <div style="font-size:1.15rem; font-weight:700;">{{ SHOP_NAME }}</div>
-    <div class="small">Please review your bill</div>
+  <div class="cust-head d-flex align-items-center gap-2">
+    <span class="brand-logo" aria-hidden="true">E</span>
+    <div>
+      <div style="font-size:1rem; font-weight:700; letter-spacing:-.02em;">{{ SHOP_NAME }}</div>
+      <div class="small" style="color:rgba(231,244,236,.8)">Please review your bill</div>
+    </div>
   </div>
 
-  <div id="custStatus" class="p-2 text-center fw-bold" style="background:#fff4d1; color:#7a5b00;">
+  <div id="custStatus" class="p-2 text-center fw-bold" style="background:#FFFBEB; color:#78350F;">
     Review the items and total below
   </div>
 
@@ -232,7 +248,7 @@
     <hr>
     <div class="d-flex justify-content-between align-items-center">
       <span style="font-size:1.2rem;">Total to pay</span>
-      <span id="cTotal" style="font-size:1.8rem; font-weight:700; color:var(--brand-dark)">₹0.00</span>
+      <span id="cTotal" style="font-size:1.75rem; font-weight:700; color:var(--brand-dark); font-family:var(--font-mono)">₹0.00</span>
     </div>
   </div>
 
@@ -382,7 +398,7 @@ function render(state){
 
   // Customer full-screen mirror
   document.getElementById('custItems').innerHTML = state.items.length ? state.items.map(it => `
-    <div style="display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee">
+    <div style="display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #DCE5DF">
       <div>
         <div style="font-weight:600">${it.name}</div>
         <div class="small text-muted">${it.quantity} × ${fmt(it.unit_price)} · GST ${it.gst_rate}%</div>
@@ -398,8 +414,8 @@ function render(state){
   if (state.redeem > 0){
     cRedeem.innerHTML = `<span class="text-success">- ${fmt(state.redeem)}</span>
       <div class="small text-muted">Using ${Math.round(state.redeem)} loyalty points</div>`;
-    cRedeemRow.style.background = '#f0fff4';
-    cRedeemRow.style.border = '1px dashed #28a745';
+    cRedeemRow.style.background = '#F5FBF7';
+    cRedeemRow.style.border = '1px dashed #2F8F68';
     cRedeemRow.style.borderRadius = '6px';
     cRedeemRow.style.padding = '6px 8px';
   } else {
@@ -410,9 +426,9 @@ function render(state){
   document.getElementById('cTotal').innerText = fmt(state.total);
 
   const custStatus = document.getElementById('custStatus');
-  if (state.status === 'awaiting_approval'){ custStatus.style.background='#fff4d1'; custStatus.style.color='#7a5b00'; custStatus.innerText='Please review and approve'; }
-  else if (state.status === 'approved'){ custStatus.style.background='#d7f5df'; custStatus.style.color='#116329'; custStatus.innerText='Approved — thank you!'; }
-  else { custStatus.style.background='#e7f0ff'; custStatus.style.color='#0057b8'; custStatus.innerText='Reviewing your bill'; }
+  if (state.status === 'awaiting_approval'){ custStatus.style.background='#FFFBEB'; custStatus.style.color='#78350F'; custStatus.innerText='Please review and approve'; }
+  else if (state.status === 'approved'){ custStatus.style.background='#E7F4EC'; custStatus.style.color='#0B3D2E'; custStatus.innerText='Approved — thank you!'; }
+  else { custStatus.style.background='#F7F9F7'; custStatus.style.color='#0B3D2E'; custStatus.innerText='Reviewing your bill'; }
 
   if (state.status === 'completed' && state.invoice_id){
     window.location = `${SHOP_ROOT}/pos/invoice/${state.invoice_id}/print`;

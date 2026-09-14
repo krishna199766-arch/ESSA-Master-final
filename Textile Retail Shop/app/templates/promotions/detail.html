@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 {% set state = scheme.status(today) %}
-<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+<div class="page-head align-items-start">
   <div>
     <h4 class="mb-1"><i class="bi bi-gift"></i> {{ scheme.name }}
-      <span class="badge text-bg-{{ {'active':'success','scheduled':'info',
-                                     'expired':'warning','inactive':'secondary'}[state] }}">
+      <span class="badge text-bg-{{ {'active':'success','scheduled':'warning',
+                                     'expired':'secondary','inactive':'secondary'}[state] }}">
         {{ {'inactive':'switched off'}.get(state, state) }}</span></h4>
-    <div class="text-muted"><code>{{ scheme.code }}</code> · {{ description }}</div>
+    <div class="page-sub"><span class="code-chip">{{ scheme.code }}</span> · {{ description }}</div>
   </div>
   <div class="d-flex gap-2">
     <a href="{{ url_for('promotions.edit_scheme', sid=scheme.id) }}"
@@ -36,10 +36,10 @@
        ('Given away', summary.benefit|inr, 'at what they would have sold for'),
        ('Refused', summary.blocked, 'times the reward was out of stock')] %}
   <div class="col-6 col-md-2">
-    <div class="card p-2 h-100">
-      <div class="text-muted small">{{ label }}</div>
-      <div class="fs-5 fw-bold" style="color:var(--brand-dark)">{{ value }}</div>
-      <div class="text-muted" style="font-size:.75rem">{{ hint }}</div>
+    <div class="kpi-card h-100">
+      <div class="kpi-label">{{ label }}</div>
+      <div class="kpi-value">{{ value }}</div>
+      <div class="kpi-sub">{{ hint }}</div>
     </div>
   </div>
   {% endfor %}
@@ -106,7 +106,7 @@
 
   <div class="col-lg-8">
     <div class="card mb-3">
-      <div class="p-3 pb-0"><h6>Bills it was applied to</h6></div>
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-receipt"></i> Bills it was applied to</h6></div>
       <div class="table-responsive">
         <table class="table table-sm mb-0 align-middle">
           <thead><tr><th>Bill</th><th>When</th><th>Store · counter</th><th>By</th>
@@ -139,9 +139,9 @@
     </div>
 
     <div class="card">
-      <div class="p-3 pb-0">
-        <h6>Audit trail</h6>
-        <div class="form-text mb-2">Every event, including the times this scheme
+      <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-clock-history"></i> Audit trail</h6>
+        <div class="panel-sub">Every event, including the times this scheme
           qualified and gave nothing — which is the only place that question is
           answered.</div>
       </div>

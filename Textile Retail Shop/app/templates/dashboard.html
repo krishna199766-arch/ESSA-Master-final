@@ -1,110 +1,137 @@
 {% extends "base.html" %}
 {% block content %}
-<h4 class="mb-3">Dashboard</h4>
-
-{# The way in. Same list as the header's menu (app/modules.py), shown as a grid
-   here because arriving is when you are choosing, not navigating. #}
-<div class="card p-3 mb-4 mod-panel">
-  <div class="d-flex align-items-center gap-2 mb-3">
-    <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button"
-            data-bs-toggle="collapse" data-bs-target="#modGrid" aria-expanded="true">−</button>
-    <span class="mod-title">SHOP MODULES</span>
+<div class="page-head">
+  <div>
+    <h4 class="page-title">{{ SHOP_NAME }}</h4>
+    <div class="page-sub">Store dashboard — today's sales, low stock and the last few bills</div>
   </div>
-  <div class="collapse show" id="modGrid">
-    <div class="row g-3">
-      {% for m in SHOP_MODULES %}
-      <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
-        <a class="mod-card" href="{{ url_for(m.endpoint) }}">
-          <span class="mod-ico"><i class="bi {{ m.icon }}"></i></span>
-          <span class="mod-text">
-            <span class="mod-name">{{ m.label }}</span>
-            <span class="mod-blurb">{{ m.blurb }}</span>
-          </span>
-        </a>
-      </div>
-      {% endfor %}
-    </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('pos.invoice_list') }}">
+      <i class="bi bi-receipt"></i> Invoices</a>
+    <a class="btn btn-brand btn-sm" href="{{ url_for('pos.counter') }}">
+      <i class="bi bi-cart-check"></i> Open billing counter</a>
   </div>
 </div>
 
-<style>
-  .mod-panel { border: 1px solid #e6ded0; }
-  .mod-title { font-size: .78rem; font-weight: 700; letter-spacing: .09em; color: #6b5b45; }
-  .mod-card {
-    display: flex; gap: .75rem; align-items: flex-start; height: 100%;
-    padding: .85rem .9rem; border: 1px solid #ece5da; border-radius: 12px;
-    background: #fff; text-decoration: none; color: inherit;
-    transition: border-color .15s, box-shadow .15s, transform .15s;
-  }
-  .mod-card:hover {
-    border-color: #d8c39a; box-shadow: 0 3px 10px rgba(0,0,0,.06); transform: translateY(-1px);
-  }
-  .mod-ico {
-    flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%;
-    background: #faf4e8; color: #8a6d3b;
-    display: flex; align-items: center; justify-content: center; font-size: 1.05rem;
-  }
-  .mod-text { display: flex; flex-direction: column; min-width: 0; }
-  .mod-name { font-weight: 600; color: #3c2f1e; }
-  .mod-blurb { font-size: .8rem; color: #7a7166; line-height: 1.25; }
-</style>
+{# The figures, one card each. Every number here is one the route already works
+   out (routes/main.py) — the three takings windows, the low-stock count, and the
+   catalogue and customer counts. #}
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">Today's takings</span>
+      <span class="kpi-icon"><i class="bi bi-currency-rupee"></i></span>
+    </div>
+    <div class="kpi-value">{{ today_sales|inr }}</div>
+    <div class="kpi-sub">billed today</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">7 days</span>
+      <span class="kpi-icon"><i class="bi bi-calendar-week"></i></span>
+    </div>
+    <div class="kpi-value">{{ week_sales|inr }}</div>
+    <div class="kpi-sub">takings, last 7 days</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">30 days</span>
+      <span class="kpi-icon"><i class="bi bi-calendar-month"></i></span>
+    </div>
+    <div class="kpi-value">{{ month_sales|inr }}</div>
+    <div class="kpi-sub">takings, last 30 days</div>
+  </div>
+  {# Low stock is a standing count that is usually non-zero, and a card that
+     wears the attention colour every day of the year stops being read as
+     attention — so only the icon chip turns amber, and only when there is some. #}
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">Low stock</span>
+      <span class="kpi-icon {% if low_stock %}warn{% endif %}"><i class="bi bi-exclamation-triangle"></i></span>
+    </div>
+    <div class="kpi-value">{{ low_stock }}</div>
+    <div class="kpi-sub">at or below reorder level</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">Products</span>
+      <span class="kpi-icon"><i class="bi bi-box-seam"></i></span>
+    </div>
+    <div class="kpi-value">{{ total_products }}</div>
+    <div class="kpi-sub">active in the catalogue</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">Customers</span>
+      <span class="kpi-icon"><i class="bi bi-people"></i></span>
+    </div>
+    <div class="kpi-value">{{ total_customers }}</div>
+    <div class="kpi-sub">on the customer master</div>
+  </div>
+</div>
 
-<div class="row g-3 mb-4">
-  <div class="col-6 col-md-3">
-    {# Three takings figures in a row, so all three are the money green: the
-       colour says what the figure is ABOUT, and reading them as one family is
-       the point — they are the same number over three windows. Low Stock is a
-       count of items and is not money, so it is not green. #}
-    <div class="stat-card card p-3 t-money">
-      <div class="label"><i class="bi bi-currency-rupee"></i> Today</div>
-      <div class="value">{{ today_sales|inr }}</div>
-    </div>
+{# The way in. Same list as the header's menu (app/modules.py), shown as a grid
+   here because arriving is when you are choosing, not navigating. #}
+<div class="card mb-4 mod-panel">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <span><i class="bi bi-grid-3x3-gap"></i> Shop modules</span>
+    <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button"
+            data-bs-toggle="collapse" data-bs-target="#modGrid" aria-expanded="true"
+            aria-controls="modGrid" title="Show or hide the modules">−</button>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="stat-card card p-3 t-money">
-      <div class="label"><i class="bi bi-calendar-week"></i> 7 Days</div>
-      <div class="value">{{ week_sales|inr }}</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="stat-card card p-3 t-money">
-      <div class="label"><i class="bi bi-calendar-month"></i> 30 Days</div>
-      <div class="value">{{ month_sales|inr }}</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    {# Stock, not amber. Low stock is a standing count that is usually non-zero,
-       and a card that wears the attention colour every day of the year stops
-       being read as attention — the triangle on the label carries the warning. #}
-    <div class="stat-card card p-3 t-stock">
-      <div class="label"><i class="bi bi-exclamation-triangle text-warning"></i> Low Stock</div>
-      <div class="value">{{ low_stock }}</div>
+  <div class="collapse show" id="modGrid">
+    <div class="card-body">
+      <div class="qa-grid">
+        {% for m in SHOP_MODULES %}
+        <a class="qa-card mod-card" href="{{ url_for(m.endpoint) }}">
+          <span class="qa-ico"><i class="bi {{ m.icon }}"></i></span>
+          <span class="qa-body">
+            <span class="qa-title"><span>{{ m.label }}</span><i class="bi bi-arrow-right"></i></span>
+            <span class="qa-desc d-block">{{ m.blurb }}</span>
+          </span>
+        </a>
+        {% endfor %}
+      </div>
     </div>
   </div>
 </div>
 
 <div class="row g-3">
   <div class="col-lg-8">
-    <div class="card p-3">
-      <h6 class="mb-3">Sales trend (last 7 days)</h6>
-      <canvas id="trendChart" height="90"></canvas>
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between gap-2">
+        <span><i class="bi bi-graph-up"></i> Sales trend</span>
+        <span class="panel-chip">last 7 days</span>
+      </div>
+      <div class="card-body">
+        <canvas id="trendChart" height="90"></canvas>
+      </div>
     </div>
     <div class="card mt-3">
-      <div class="card-header">Recent Invoices</div>
+      <div class="card-header d-flex align-items-center justify-content-between gap-2">
+        <span><i class="bi bi-receipt"></i> Recent invoices</span>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('pos.invoice_list') }}">View all</a>
+      </div>
       <div class="table-responsive">
-        <table class="table table-sm mb-0">
+        <table class="table table-sm table-hover mb-0 align-middle">
           <thead><tr><th>Invoice#</th><th>Customer</th><th>Cashier</th><th class="text-end">Total</th><th>Date</th></tr></thead>
           <tbody>
             {% for i in recent_invoices %}
             <tr>
-              <td><a href="{{ url_for('pos.view_invoice', iid=i.id) }}">{{ i.invoice_number }}</a></td>
+              <td><a href="{{ url_for('pos.view_invoice', iid=i.id) }}"><code>{{ i.invoice_number }}</code></a></td>
               <td>{{ i.customer.name if i.customer else 'Walk-in' }}</td>
               <td>{{ i.cashier.full_name }}</td>
-              <td class="text-end">{{ i.total|inr }}</td>
-              <td>{{ i.invoice_date.strftime('%d %b %H:%M') }}</td>
+              <td class="text-end fw-bold" style="color:var(--brand-dark)">{{ i.total|inr }}</td>
+              <td class="text-muted text-nowrap">{{ i.invoice_date.strftime('%d %b %H:%M') }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="text-center text-muted">No invoices yet.</td></tr>
+            <tr><td colspan="5">
+              <div class="empty-state">
+                <span class="empty-ico"><i class="bi bi-receipt"></i></span>
+                <div class="empty-title">No invoices yet</div>
+                <div class="empty-desc">Bills raised at the counter or from the floor appear here.</div>
+              </div>
+            </td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -112,20 +139,25 @@
     </div>
   </div>
   <div class="col-lg-4">
-    <div class="card p-3 mb-3">
-      <div class="d-flex justify-content-between"><span>Products</span><strong>{{ total_products }}</strong></div>
-      <div class="d-flex justify-content-between"><span>Customers</span><strong>{{ total_customers }}</strong></div>
-    </div>
     <div class="card">
-      <div class="card-header text-warning"><i class="bi bi-exclamation-triangle"></i> Low Stock</div>
+      <div class="card-header d-flex align-items-center justify-content-between gap-2">
+        <span><i class="bi bi-exclamation-triangle"></i> Low stock</span>
+        <span class="panel-chip">{{ low_stock }} item{{ '' if low_stock == 1 else 's' }}</span>
+      </div>
       <ul class="list-group list-group-flush">
         {% for p in low_stock_items %}
-        <li class="list-group-item d-flex justify-content-between">
-          <span>{{ p.name }}</span>
-          <span class="badge bg-warning text-dark">{{ p.stock_qty }} {{ p.unit }}</span>
+        <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+          <span class="text-truncate">{{ p.name }}</span>
+          <span class="badge text-bg-warning">{{ p.stock_qty }} {{ p.unit }}</span>
         </li>
         {% else %}
-        <li class="list-group-item text-muted">All good.</li>
+        <li class="list-group-item">
+          <div class="empty-state py-3">
+            <span class="empty-ico"><i class="bi bi-check2-circle"></i></span>
+            <div class="empty-title">All good.</div>
+            <div class="empty-desc">Nothing is at or below its reorder level.</div>
+          </div>
+        </li>
         {% endfor %}
       </ul>
     </div>
@@ -142,12 +174,34 @@ new Chart(document.getElementById('trendChart'), {
     datasets: [{
       label: 'Sales (₹)',
       data: {{ trend_values|tojson }},
-      borderColor: '#2a78d6',
-      backgroundColor: 'rgba(42,120,214,.15)',
+      borderColor: '#2F8F68',
+      borderWidth: 2,
+      pointBackgroundColor: '#2F8F68',
+      pointBorderColor: '#FFFFFF',
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      // the design's area fill: the accent at 25%, fading to nothing
+      backgroundColor: (ctx) => {
+        const area = ctx.chart.chartArea;
+        if (!area) return 'rgba(47,143,104,.25)';
+        const g = ctx.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+        g.addColorStop(0, 'rgba(47,143,104,.25)');
+        g.addColorStop(1, 'rgba(47,143,104,0)');
+        return g;
+      },
       fill: true, tension: .3
     }]
   },
-  options: { responsive: true, plugins: { legend: { display: false } } }
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: '#DCE5DF', drawTicks: false }, border: { color: '#DCE5DF' },
+           ticks: { color: '#68756E', font: { size: 11 }, padding: 6 } },
+      y: { grid: { color: '#DCE5DF', drawTicks: false }, border: { display: false },
+           ticks: { color: '#68756E', font: { size: 11 }, padding: 6 }, beginAtZero: true }
+    }
+  }
 });
 </script>
 {% endblock %}

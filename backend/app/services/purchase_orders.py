@@ -53,6 +53,10 @@ STATUSES = ["draft", "pending", "confirmed", "cancelled"]
 #: module note.
 EDITABLE = {"draft", "pending"}
 
+#: Which states may be deleted outright: never sent, or already called off.
+#: Pending and confirmed orders are cancelled first — see the delete route.
+DELETABLE = {"draft", "cancelled"}
+
 #: Where each state may go next. Cancelled is terminal: an order that was called
 #: off and then quietly revived is how somebody receives goods against a PO the
 #: supplier was told to ignore.

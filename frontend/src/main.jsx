@@ -29,7 +29,7 @@ const framed = (() => {
 
 if (framed) {
   document.getElementById('root').innerHTML = `
-    <div style="font:14px/1.65 system-ui,sans-serif;color:#33261F;padding:28px;max-width:640px">
+    <div style="font:14px/1.65 system-ui,sans-serif;color:#17221D;padding:28px;max-width:640px">
       <h2 style="margin:0 0 10px;font-size:17px">This is the warehouse app, in a frame</h2>
       <p style="margin:0 0 12px">
         Something asked for a <b>POS</b> page and got this instead, so the shop is
@@ -41,7 +41,7 @@ if (framed) {
         one — so it has stopped rather than loading itself over and over.
       </p>
       <p style="margin:0">
-        <a href="/" target="_top" style="color:#5A3428;font-weight:600">Open the warehouse ↗</a>
+        <a href="/" target="_top" style="color:#0B3D2E;font-weight:600">Open the warehouse ↗</a>
       </p>
     </div>`
 } else {

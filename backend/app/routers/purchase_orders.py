@@ -285,18 +285,29 @@ def move_status(po_id: int, body: StatusIn, db: Session = Depends(get_db)):
 def delete_order(po_id: int, db: Session = Depends(get_db)):
     """Remove an order outright.
 
-    Only a draft. Once an order has been sent or agreed it is a document the
-    supplier also holds, and the honest way to withdraw it is `cancelled` — which
-    leaves it on the register saying so, instead of leaving the other side
-    holding a document this system has no record of.
+    A draft, or an order already cancelled. A pending or confirmed order is a
+    document the supplier also holds, and the honest way to withdraw it is
+    `cancelled` first — which records that it was called off — instead of
+    leaving the other side holding a document this system has no record of.
+    Once cancelled, clearing it off the register is the business's call.
+
+    Never an order a consignment cites, whatever its state: the transport row
+    would be left pointing at nothing. Cancelling already refuses such an order,
+    so this only guards against a link made some other way.
     """
     po = db.get(models.PurchaseOrder, po_id)
     if not po:
         raise HTTPException(404, "purchase order not found")
-    if po.status != "draft":
+    if po.status not in po_svc.DELETABLE:
         raise HTTPException(
-            400, f"a {po.status} order cannot be deleted — cancel it instead, so "
-                 f"it stays on the register with its reason")
+            400, f"a {po.status} order cannot be deleted — cancel it first, so "
+                 f"it is on record that it was called off")
+    linked = db.query(models.LREntry).filter(
+        models.LREntry.purchase_order_id == po.id).count()
+    if linked:
+        raise HTTPException(
+            400, f"{linked} transport entr{'y' if linked == 1 else 'ies'} "
+                 f"reference this order — it cannot be deleted")
     db.delete(po)
     db.commit()
     return {"ok": True, "deleted": po_id}

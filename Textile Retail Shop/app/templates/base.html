@@ -1,33 +1,54 @@
 <!doctype html>
 <html lang="en">
 <head>
+  {# First thing on the page, before any CSS: inside the Essa web app this shop is
+     drawn in an <iframe>, under Essa's own header, context bar and sidebar. The
+     class lets app.css turn this page's header into a slim white sub-bar there,
+     instead of a second dark header, with no flash of the wrong one. If the check
+     itself throws (a cross-origin parent in an old browser), we are framed. #}
+  <script>
+    try { if (window.self !== window.top) document.documentElement.classList.add('in-frame'); }
+    catch (e) { document.documentElement.classList.add('in-frame'); }
+  </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
   <title>{% block title %}{{ SHOP_NAME }}{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-  <meta name="theme-color" content="#4B2509">
+  <meta name="theme-color" content="#0B3D2E">
 </head>
 <body>
 {% if current_user.is_authenticated %}
+{% set _who = (current_user.full_name or '').split() or (current_user.username or '').split() or ['?'] %}
 <nav class="navbar navbar-expand-lg navbar-dark sticky-top brand-nav">
   <div class="container-fluid">
-    <a class="navbar-brand fw-bold" href="{{ url_for('main.dashboard') }}">
-      {{ SHOP_NAME }}
+    <a class="navbar-brand" href="{{ url_for('main.dashboard') }}">
+      <span class="brand-logo" aria-hidden="true">E</span>
+      <span class="brand-text">
+        <span class="brand-name">{{ SHOP_NAME }} <span class="brand-tag d-none d-sm-inline">· POS</span></span>
+        <span class="brand-sub d-none d-md-block">Billing, stock and customers for this store</span>
+      </span>
     </a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav"
+            aria-controls="nav" aria-expanded="false" aria-label="Open navigation menu">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="nav">
       {# One control instead of a row of eleven. It says which screen is open
          even while shut, because a collapsed navigation that doesn't say where
          you are is how someone loses the screen and opens the menu to find out.
-         Built from app/modules.py — the same list the dashboard's cards use. #}
+         Built from app/modules.py — the same list the dashboard's cards use.
+         Standalone it is a header control; inside the Essa frame, a breadcrumb
+         chip on the white sub-bar. #}
+      <span class="frame-title" aria-hidden="true"><i class="bi bi-shop"></i> Store</span>
       <ul class="navbar-nav me-auto">
         <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#"
+          <a class="nav-link nav-ctl dropdown-toggle d-flex align-items-center gap-2" href="#"
              data-bs-toggle="dropdown" aria-expanded="false">
             <i class="bi bi-grid-3x3-gap-fill"></i>
             <span>{{ CURRENT_MODULE.label if CURRENT_MODULE else 'Dashboard' }}</span>
@@ -57,14 +78,25 @@
           </ul>
         </li>
       </ul>
-      <ul class="navbar-nav">
+      <ul class="navbar-nav align-items-lg-center">
         <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
-            <i class="bi bi-person-circle"></i> {{ current_user.full_name }} <span class="badge bg-light text-dark">{{ current_user.role }}</span>
+          <a class="nav-link user-chip dropdown-toggle" href="#" data-bs-toggle="dropdown" aria-expanded="false"
+             title="{{ current_user.full_name }}">
+            <span class="user-avatar" aria-hidden="true">{{ (_who[0][:1] ~ (_who[1][:1] if _who|length > 1 else ''))|upper }}</span>
+            <span class="user-meta">
+              <span class="user-role">{{ current_user.role }}</span>
+              <span class="user-name">{{ current_user.full_name }}</span>
+            </span>
           </a>
           <ul class="dropdown-menu dropdown-menu-end">
+            <li><h6 class="dropdown-header">{{ current_user.full_name }} · {{ current_user.role }}</h6></li>
             <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
           </ul>
+        </li>
+        <li class="nav-item d-none d-lg-flex align-items-center"><span class="nav-divider"></span></li>
+        <li class="nav-item d-none d-lg-flex">
+          <a class="nav-link nav-icon-btn" href="{{ url_for('auth.logout') }}" title="Logout" aria-label="Logout">
+            <i class="bi bi-box-arrow-right"></i></a>
         </li>
       </ul>
     </div>
@@ -92,6 +124,22 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+  // Every chart on every screen in the design's colours: gridlines in the border
+  // green-grey, 11px muted axis text, a dark-green tooltip. Set once, here, before
+  // any page draws a chart.
+  if (window.Chart) {
+    Chart.defaults.font.family = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    Chart.defaults.font.size = 11;
+    Chart.defaults.color = '#68756E';
+    Chart.defaults.borderColor = '#DCE5DF';
+    Object.assign(Chart.defaults.plugins.tooltip, {
+      backgroundColor: '#0B3D2E', titleColor: '#FFFFFF', bodyColor: '#E7F4EC',
+      cornerRadius: 8, padding: 8, displayColors: false,
+      titleFont: {size: 11, weight: '600'}, bodyFont: {size: 11},
+    });
+  }
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

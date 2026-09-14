@@ -28,13 +28,14 @@ export function Select({ label, value, options, onChange, placeholder, compact, 
     <View style={[{ marginBottom: compact ? 0 : 12 }, style]}>
       {label ? <Text style={s.fieldLabel}>{label}</Text> : null}
       <TouchableOpacity style={box} onPress={() => setOpen(true)}>
-        <Text numberOfLines={1} style={{ color: value ? C.text : C.muted, fontSize: compact ? 13 : 15 }}>
+        <Text numberOfLines={1} style={{ color: value ? C.text : C.muted, fontSize: compact ? 13 : 14 }}>
           {value || placeholder || 'Select…'}
         </Text>
       </TouchableOpacity>
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <View style={s.modalWrap}>
           <View style={s.modalCard}>
+            <View style={s.modalHandle} />
             <View style={s.modalHead}>
               <Text style={s.modalTitle}>{label || placeholder || 'Choose'}</Text>
               <TouchableOpacity onPress={() => setOpen(false)}><Text style={{ color: C.muted, fontSize: 20 }}>×</Text></TouchableOpacity>
@@ -58,7 +59,7 @@ export function Select({ label, value, options, onChange, placeholder, compact, 
               keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
                 <TouchableOpacity style={s.optRow} onPress={() => { onChange(item); setCustom(''); setOpen(false); }}>
-                  <Text style={{ color: item === value ? C.accent : C.text }}>{item}</Text>
+                  <Text style={{ color: item === value ? C.accent : C.text, fontSize: 14, fontWeight: item === value ? '600' : '400' }}>{item}</Text>
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
@@ -73,18 +74,20 @@ export function Select({ label, value, options, onChange, placeholder, compact, 
 }
 
 export function Badge({ text, tone }) {
-  const bg = { ok: '#12301f', warn: '#3a2f13', err: '#3a1a18', mute: C.panel2 }[tone] || C.panel2;
-  const fg = { ok: C.ok, warn: C.warn, err: C.err, mute: C.muted }[tone] || C.muted;
+  const bg = { ok: C.successBg, warn: C.pendingBg, err: C.dangerBg, mute: C.neutralBg }[tone] || C.neutralBg;
+  const fg = { ok: C.successText, warn: C.pendingText, err: C.dangerText, mute: C.neutralText }[tone] || C.neutralText;
+  const bd = { ok: C.successBorder, warn: C.pendingBorder, err: C.dangerBorder, mute: C.neutralBorder }[tone] || C.neutralBorder;
   return (
-    <View style={[s.badge, { backgroundColor: bg }]}>
-      <Text style={{ color: fg, fontSize: 11, fontWeight: '600' }}>{text}</Text>
+    <View style={[s.badge, { backgroundColor: bg, borderColor: bd }]}>
+      <View style={[s.badgeDot, { backgroundColor: fg }]} />
+      <Text style={[s.badgeText, { color: fg }]}>{text}</Text>
     </View>
   );
 }
 
 export function GhostButton({ title, onPress, disabled, style, tone }) {
   return (
-    <TouchableOpacity style={[s.btnGhost, style, disabled && { opacity: 0.4 }]} onPress={onPress} disabled={disabled}>
+    <TouchableOpacity style={[s.btnGhost, style, disabled && { opacity: 0.5 }]} onPress={onPress} disabled={disabled}>
       <Text style={[s.btnGhostText, tone === 'err' && { color: C.err }]}>{title}</Text>
     </TouchableOpacity>
   );
@@ -92,9 +95,9 @@ export function GhostButton({ title, onPress, disabled, style, tone }) {
 
 export function PrimaryButton({ title, onPress, disabled, busy, style }) {
   return (
-    <TouchableOpacity style={[s.btn, { marginTop: 0 }, style, disabled && { opacity: 0.4 }]}
+    <TouchableOpacity style={[s.btn, { marginTop: 0 }, style, disabled && { opacity: 0.5 }]}
       onPress={onPress} disabled={disabled || busy}>
-      {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>{title}</Text>}
+      {busy ? <ActivityIndicator color={C.onChrome} /> : <Text style={s.btnText}>{title}</Text>}
     </TouchableOpacity>
   );
 }

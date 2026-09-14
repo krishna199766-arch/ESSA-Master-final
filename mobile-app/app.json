@@ -4,10 +4,10 @@
     "slug": "essa-warehouse",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#0f1420",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F7F9F7",
     "splash": {
-      "backgroundColor": "#0f1420",
+      "backgroundColor": "#F7F9F7",
       "resizeMode": "contain"
     },
     "assetBundlePatterns": ["**/*"],

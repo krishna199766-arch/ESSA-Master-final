@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The primary button's fill: dark forest green, at half strength while the
+     address is being checked (the button is disabled then). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:color="#800B3D2E" />
+    <item android:color="#0B3D2E" />
+</selector>

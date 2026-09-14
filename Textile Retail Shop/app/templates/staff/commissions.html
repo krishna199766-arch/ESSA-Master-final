@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<h4>Commissions — since {{ month_start.strftime('%d %b %Y') }}</h4>
+<div class="page-head">
+  <div>
+    <h4><i class="bi bi-percent"></i> Commissions</h4>
+    <div class="page-sub">since {{ month_start.strftime('%d %b %Y') }}</div>
+  </div>
+</div>
 <div class="card">
   <table class="table mb-0">
     <thead><tr><th>Staff</th><th>Role</th><th class="text-end">Returns</th><th class="text-end">Net sales</th><th class="text-end">Comm %</th><th class="text-end">Commission</th></tr></thead>

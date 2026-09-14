@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="page-head">
   <h4><i class="bi bi-people"></i> Customers</h4>
   <a href="{{ url_for('customers.new_customer') }}" class="btn btn-brand btn-sm"><i class="bi bi-plus"></i> New</a>
 </div>
@@ -14,7 +14,7 @@
         <tr>
           <td>{{ c.name }}</td><td>{{ c.phone or '-' }}</td><td>{{ c.email or '-' }}</td>
           <td>{{ c.gstin or '-' }}</td>
-          <td class="text-end"><span class="badge bg-warning text-dark">{{ '%.0f' % c.loyalty_points }} pts</span></td>
+          <td class="text-end"><span class="badge text-bg-info">{{ '%.0f' % c.loyalty_points }} pts</span></td>
           <td class="text-end">{{ c.total_spent|inr }}</td>
           <td class="text-nowrap">
             <a href="{{ url_for('customers.customer_card', cid=c.id) }}" class="btn btn-sm btn-outline-secondary" title="Print membership card"><i class="bi bi-person-vcard"></i></a>

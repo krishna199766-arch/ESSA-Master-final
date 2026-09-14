@@ -1,87 +1,79 @@
 /* ==========================================================================
    Shop — theme
    --------------------------------------------------------------------------
-   This app runs inside the Essa backend at /pos, directly under Essa's own
-   chrome. It used to carry a purple of its own, which made the mount read as
-   two products stacked on one screen. The tokens below are Essa's, copied
-   verbatim from frontend/src/styles.css so the two surfaces stay one palette:
-   deep warm brown chrome, gold for the primary action, warm neutrals, and
-   semantic colours kept clearly off the brand hue.
+   This app runs two ways: on its own in a browser, and inside the Essa web app
+   in an <iframe> at /pos, directly under Essa's own dark-green header, context
+   bar and sidebar. Both surfaces use one design system, so the tokens below are
+   the design spec's (ESSA_DESIGN_SPEC.md): forest-green chrome, a green accent,
+   cool green-grey neutrals, amber for "act on this" and rose for danger.
 
-   Bootstrap 5.3 is loaded before this file and ships its own blue. Its theme
-   is driven by CSS variables, so it is re-pointed at these tokens here rather
-   than fought class by class in the templates.
+   Bootstrap 5.3 is loaded before this file and ships its own blue. Its theme is
+   driven by CSS variables, so it is re-pointed at these tokens here rather than
+   fought class by class in the templates.
    ========================================================================== */
 :root {
-  /* --- brand --- */
-  --brand: #5A3428;
-  --brand-800: #40241B;   /* pressed */
-  --brand-700: #4A2B21;   /* hover */
-  --brand-500: #7A4C3D;   /* secondary marks, icons */
-  --brand-300: #B08D80;   /* decorative borders */
-  --brand-200: #DCC9C1;   /* strong tint border */
-  --brand-100: #EFE4DF;   /* selected row */
-  --brand-50:  #F9F4F2;   /* hover row */
+  /* --- type --- */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* --- neutrals, warmed to match --- */
-  --bg: #F5F2F0;
+  /* --- brand: forest green --- */
+  --brand: #0B3D2E;       /* chrome, primary button, key money */
+  --brand-800: #082C21;   /* primary hover, header controls */
+  --brand-700: #124234;   /* header control hover */
+  --brand-500: #2F8F68;   /* accent: active markers, focus ring, icons */
+  --brand-450: #257353;   /* accent hover; accent as TEXT (5.7:1 on white) */
+  --brand-300: #C1DDD2;   /* accent at 30% — tinted borders */
+  --brand-200: #D5EFE0;   /* tint hover */
+  --brand-100: #E7F4EC;   /* tint: active nav, icon chips, green badges */
+  --brand-50:  #F5FBF7;   /* tint at 40% — hovered/selected rows */
+
+  /* --- neutrals --- */
+  --bg: #F7F9F7;          /* page, table header, card header band */
   --panel: #FFFFFF;
-  --panel-2: #F2EEEB;
-  --panel-3: #EAE4E0;
-  --line: #E4DCD7;        /* dividers — decorative, may be soft */
-  --line-strong: #96867C; /* interactive borders — 3.50:1 on white */
-  --text: #2A2320;
-  --text-2: #574C46;
-  --muted: #7C6F68;
+  --panel-2: #F7F9F7;
+  --panel-3: #EEF3EF;
+  --line: #DCE5DF;        /* borders and dividers */
+  --line-strong: #C5D2CA; /* hovered borders */
+  --text: #17221D;
+  --text-2: #3F4B45;
+  --muted: #68756E;       /* 4.8:1 on white, 4.5:1 on --bg */
 
-  /* --- dark chrome ---
-     The navbar. White text is 13.40:1 on it, --brand-200 is 8.40:1 for the
-     second rank and --brand-300 is 4.44:1 for ghost-button borders. --brand
-     itself is 1.25:1 here and is never used on the bar — that is the whole
-     reason the accent is gold. */
-  --chrome: #4B2509;
-  --chrome-active: #6B3712;
-  --chrome-line: rgba(0,0,0,.22);
-  --chrome-top: linear-gradient(180deg, #552D0C 0%, #45220A 100%);
-  --chrome-nav: linear-gradient(180deg, #45220A 0%, #3A1C05 100%);
-  --on-chrome: #FFFFFF;
-  --on-chrome-2: var(--brand-200);
-  --on-chrome-line: var(--brand-300);
+  /* --- the top header ---
+     White is 12.2:1 on it and the tint is 10.8:1. */
+  --header-bg: #0B3D2E;
+  --header-deep: #082C21;
+  --header-hover: #124234;
+  --header-line: rgba(47,143,104,.3);
+  --on-header: #FFFFFF;
+  --on-header-2: #E7F4EC;
 
-  /* --- gold: the primary action ---
-     Dark label, never white: #2A2320 on gold is 6.67:1, white is 2.31:1 and
-     fails. Gold against the light page is only 2.08:1, so a gold button on a
-     light panel needs --gold-line to have a findable edge (3.43:1). */
-  --gold: #D4A24C;
-  --gold-700: #C9962C;
-  --gold-line: #A87A2E;
-  --gold-fill: linear-gradient(180deg, #DDB05E 0%, #C9962C 100%);
-  --gold-fill-hover: linear-gradient(180deg, #E3B863 0%, #BE8A22 100%);
-  --gold-glow: 0 2px 10px rgba(168,122,46,.38);
+  /* --- accent aliases --- */
+  --accent: #2F8F68;
+  --accent-hover: #257353;
+  --tint: #E7F4EC;
+  --tint-hover: #D5EFE0;
 
-  /* --- chart palette. Fixed slot order — see the note in Essa's styles.css;
-     --viz-2 is the single-series default both apps use. --- */
-  --viz-1: #008300;  --viz-2: #2a78d6;  --viz-3: #eb6834;
-  --viz-4: #4a3aa7;  --viz-5: #e34948;  --viz-other: #8C837B;
+  /* --- chart palette (spec §1) --- */
+  --viz-1: #2F8F68;  --viz-2: #0B3D2E;  --viz-3: #6FBF98;
+  --viz-4: #D97706;  --viz-5: #64748B;  --viz-other: #DCE5DF;
 
-  /* --- semantic. Kept away from the brand hue on purpose. --- */
-  --ok: #1E7A4D;        --ok-bg: #E7F4ED;      --ok-line: #BFE0CE;
-  --warn: #B45309;      --warn-bg: #FDF2E3;    --warn-line: #F0D6AE;
-  --danger: #C0392B;    --danger-bg: #FBEBE9;  --danger-line: #F0C7C1;
-  --info: #1F6FB2;      --info-bg: #E9F2FA;    --info-line: #C3DBF0;
+  /* --- semantic --- */
+  --ok: #257353;        --ok-bg: #E7F4EC;      --ok-line: #C1DDD2;    --ok-text: #0B3D2E;
+  --warn: #B45309;      --warn-bg: #FFFBEB;    --warn-line: #FDE68A;  --warn-text: #78350F;
+  --warn-icon: #D97706; --warn-dot: #FBBF24;
+  --danger: #E11D48;    --danger-bg: #FFF1F2;  --danger-line: #FECDD3; --danger-text: #9F1239;
+  --danger-hover: #BE123C;
+  --info: #0B3D2E;      --info-bg: #E7F4EC;    --info-line: #DCE5DF;
 
   /* --- tile accents: what a figure is ABOUT ---
-     Essa's, copied verbatim from frontend/src/styles.css like everything else in
-     this block, so a stat card means the same colour in the shop as it does in
-     the warehouse. frontend/tools/tile_palette_test.mjs reads BOTH files and
-     fails if they drift - two copies of a palette is exactly the kind of thing
-     that rots quietly, and a shop whose "money" green is a shade off is the
-     mount reading as two products again.
+     Essa's, copied verbatim from frontend/src/styles.css, so a stat card means
+     the same colour in the shop as it does in the warehouse.
+     frontend/tools/tile_palette_test.mjs reads BOTH files and fails if they
+     drift, so these 30 values must not be edited here alone.
 
      Assigned by meaning, never by position: money is green, goods coming back
-     are rose. Amber is deliberately absent - it belongs to --warn, which means
-     *act on this*, and a decorative amber would spend that signal on tiles at
-     rest. */
+     are rose. On the redesigned white stat card they mark the family with a dot
+     rather than tinting the whole card. */
   --tile-count-bg: #E3EDF9; --tile-count-line: #C3D8F0;
   --tile-count-bar: #2A5FA8; --tile-count-val: #1B4E80; --tile-count-hover: #D7E5F6;
   --tile-stock-bg: #ECE7F8; --tile-stock-line: #D3C9EE;
@@ -95,351 +87,1005 @@
   --tile-adjust-bg: #F4E8F1; --tile-adjust-line: #E3CBDD;
   --tile-adjust-bar: #8A4A7D; --tile-adjust-val: #743E69; --tile-adjust-hover: #EEDCEA;
 
-  --radius: 10px; --radius-sm: 7px; --radius-lg: 14px;
+  /* --- shape & depth (spec §3) --- */
+  --radius: 12px;         /* cards, panels, modals, toasts */
+  --radius-sm: 8px;       /* buttons, inputs, nav items */
+  --radius-xs: 6px;       /* badges, chips */
+  --radius-lg: 12px;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.03);
+  --shadow-2: 0 4px 12px rgba(0,0,0,.08);
+  --shadow-modal: 0 10px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.05);
+  --focus: 0 0 0 1px #2F8F68;
 
-  /* --- density -------------------------------------------------------------
-     This is data-entry software: the same form is filled in dozens of times a
-     day, so a screen shows more when the controls are one step smaller than the
-     ones Bootstrap ships for a marketing page.
-
-     --page-max stops a form growing with the monitor. Every screen sits in a
-     container-fluid, so on a 1920 display a col-md-3 was 430px wide and a
-     four-digit price had 380px of nothing after it. Capped and centred, the
-     same column is ~320px and the whole app keeps one left edge.
-
-     --field-short is the other half of that: a price, a quantity or a date is
-     never long, and a box far wider than its value reads as a missing field
-     rather than a full one. Applied by input TYPE below, so it needs nothing
-     from the templates. */
-  --page-max: 1360px;
+  /* --- density ---
+     --page-max stops a form growing with the monitor; --field-short gives a
+     price, a quantity or a date a box the size of its value. */
+  --page-max: 1440px;
   --field-short: 175px;
-  --ctl-pad-y: .3rem;  --ctl-pad-x: .6rem;
-  --ctl-pad-y-sm: .2rem; --ctl-pad-x-sm: .45rem;
-  --shadow-1: 0 1px 2px rgba(42,35,32,.06), 0 1px 3px rgba(42,35,32,.05);
-  --shadow-2: 0 4px 14px rgba(42,35,32,.10);
-  --focus: 0 0 0 3px rgba(90,52,40,.18);
 
   /* Aliases the templates already name. --brand-dark is used as a text colour
-     on white (prices, totals, headings), so it points at the darkest step. */
-  --brand-dark: var(--brand-800);
-  --brand-light: var(--brand-200);
-  --accent: var(--gold);
+     on white (prices, totals, headings) — the spec's "key money" colour. */
+  --brand-dark: #0B3D2E;
+  --brand-light: #D5EFE0;
 
   /* --- Bootstrap re-point ---
-     bg-*/text-*/border-* utilities and .badge all read the -rgb pairs, so
-     setting them here retints every one of those in the templates at once. */
-  --bs-primary: #5A3428;          --bs-primary-rgb: 90,52,40;
-  --bs-secondary: #7C6F68;        --bs-secondary-rgb: 124,111,104;
-  --bs-success: #1E7A4D;          --bs-success-rgb: 30,122,77;
-  --bs-danger: #C0392B;           --bs-danger-rgb: 192,57,43;
+     bg-*/text-*/border-* utilities read the -rgb pairs, so setting them here
+     retints every one of those in the templates at once. The *text* colours are
+     the AA-safe steps (accent-hover, amber-700), not the lighter icon colours. */
+  --bs-primary: #0B3D2E;          --bs-primary-rgb: 11,61,46;
+  --bs-secondary: #68756E;        --bs-secondary-rgb: 104,117,110;
+  --bs-success: #257353;          --bs-success-rgb: 37,115,83;
+  --bs-danger: #E11D48;           --bs-danger-rgb: 225,29,72;
   --bs-warning: #B45309;          --bs-warning-rgb: 180,83,9;
-  --bs-info: #1F6FB2;             --bs-info-rgb: 31,111,178;
-  --bs-light: #F2EEEB;            --bs-light-rgb: 242,238,235;
-  --bs-dark: #2A2320;             --bs-dark-rgb: 42,35,32;
-  --bs-body-bg: #F5F2F0;          --bs-body-bg-rgb: 245,242,240;
-  --bs-body-color: #2A2320;       --bs-body-color-rgb: 42,35,32;
-  --bs-secondary-color: rgba(42,35,32,.66);
-  --bs-tertiary-bg: #F2EEEB;
-  --bs-border-color: #E4DCD7;
-  --bs-border-color-translucent: rgba(42,35,32,.12);
-  --bs-link-color: #5A3428;       --bs-link-color-rgb: 90,52,40;
-  --bs-link-hover-color: #40241B; --bs-link-hover-color-rgb: 64,36,27;
-  --bs-emphasis-color: #2A2320;
-  --bs-heading-color: #2A2320;
-  --bs-focus-ring-color: rgba(90,52,40,.18);
-  --bs-code-color: #7A4C3D;
+  --bs-info: #0B3D2E;             --bs-info-rgb: 11,61,46;
+  --bs-light: #F7F9F7;            --bs-light-rgb: 247,249,247;
+  --bs-dark: #17221D;             --bs-dark-rgb: 23,34,29;
+  --bs-primary-text-emphasis: #0B3D2E;  --bs-primary-bg-subtle: #E7F4EC;  --bs-primary-border-subtle: #C1DDD2;
+  --bs-success-text-emphasis: #0B3D2E;  --bs-success-bg-subtle: #E7F4EC;  --bs-success-border-subtle: #C1DDD2;
+  --bs-warning-text-emphasis: #78350F;  --bs-warning-bg-subtle: #FFFBEB;  --bs-warning-border-subtle: #FDE68A;
+  --bs-danger-text-emphasis: #9F1239;   --bs-danger-bg-subtle: #FFF1F2;   --bs-danger-border-subtle: #FECDD3;
+  --bs-info-text-emphasis: #0B3D2E;     --bs-info-bg-subtle: #E7F4EC;     --bs-info-border-subtle: #DCE5DF;
+  --bs-secondary-text-emphasis: #3F4B45; --bs-secondary-bg-subtle: #F7F9F7; --bs-secondary-border-subtle: #DCE5DF;
+  --bs-light-text-emphasis: #3F4B45;    --bs-light-bg-subtle: #F7F9F7;    --bs-light-border-subtle: #DCE5DF;
+  --bs-body-bg: #F7F9F7;          --bs-body-bg-rgb: 247,249,247;
+  --bs-body-color: #17221D;       --bs-body-color-rgb: 23,34,29;
+  --bs-body-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bs-font-sans-serif: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bs-font-monospace: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bs-secondary-color: #68756E;  --bs-secondary-color-rgb: 104,117,110;
+  --bs-secondary-bg: #F7F9F7;     --bs-secondary-bg-rgb: 247,249,247;
+  --bs-tertiary-color: rgba(23,34,29,.5);
+  --bs-tertiary-bg: #F7F9F7;      --bs-tertiary-bg-rgb: 247,249,247;
+  --bs-border-color: #DCE5DF;
+  --bs-border-color-translucent: rgba(11,61,46,.12);
+  --bs-link-color: #257353;       --bs-link-color-rgb: 37,115,83;
+  --bs-link-hover-color: #0B3D2E; --bs-link-hover-color-rgb: 11,61,46;
+  --bs-emphasis-color: #17221D;   --bs-emphasis-color-rgb: 23,34,29;
+  --bs-heading-color: #17221D;
+  --bs-focus-ring-color: rgba(47,143,104,.35);
+  --bs-code-color: #0B3D2E;
+  --bs-highlight-bg: #FFFBEB;
+  --bs-box-shadow-sm: 0 1px 2px rgba(0,0,0,.03);
+  --bs-box-shadow: 0 4px 12px rgba(0,0,0,.08);
 
-  /* 14px, matching the warehouse's own 13-14px scale next door. Bootstrap sizes
-     most things off this one variable; the components that hardcode 1rem are
-     brought down with it in the density block near the end of this file. */
-  --bs-body-font-size: .875rem;
-  /* corners: the tokens above rather than Bootstrap's .375rem, so an input and
-     the card it sits in are not two different radii */
-  --bs-border-radius: var(--radius-sm);
-  --bs-border-radius-sm: 5px;
-  --bs-border-radius-lg: var(--radius);
+  /* 13px body copy; most UI chrome sets itself to 12px below (spec §2). */
+  --bs-body-font-size: .8125rem;
+  --bs-body-line-height: 1.5;
+  --bs-border-radius: 8px;
+  --bs-border-radius-sm: 6px;
+  --bs-border-radius-lg: 12px;
+  --bs-border-radius-xl: 12px;
+  --bs-border-radius-pill: 999px;
 }
 
-body { background: var(--bg); color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: var(--font-sans);
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+}
+code, kbd, samp, pre, .font-monospace { font-family: var(--font-mono); letter-spacing: 0; }
+code { font-size: .9em; color: var(--brand); }
+a { text-underline-offset: 2px; }
+/* Links in running text keep their underline (colour alone is under 3:1 against
+   the body text); in tables, where they are also bold, they drop it. */
+.table a:not(.btn), .card-header a:not(.btn) { text-decoration: none; }
+.table a:not(.btn):hover, .card-header a:not(.btn):hover { text-decoration: underline; }
+.text-muted { color: var(--muted) !important; }
+hr { border-color: var(--line); opacity: 1; }
+::selection { background: var(--tint-hover); color: var(--text); }
 
-/* One focus treatment, and it is always visible. On the chrome the brown ring
-   is 1.25:1 — invisible — so the bar gets the gold one instead. */
-:where(button, input, select, textarea, a):focus-visible {
-  outline: 2px solid var(--brand); outline-offset: 1px; }
-.brand-nav :focus-visible { outline-color: var(--gold); }
+/* scrollbars (spec §3) */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #F7F9F7; }
+::-webkit-scrollbar-thumb { background: #DCE5DF; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2F8F68; }
 
-/* ---------- the bar ----------
-   Same chrome as Essa's top bar, which sits immediately above it under the
-   /pos mount, finished with the same gold hairline where the dark block meets
-   the light page. The line is decoration only — the boundary itself is already
-   carried by a 12:1 luminance step. */
+/* One focus treatment, and it is always visible: the green ring. On the dark
+   header it would be 2.9:1 against the bar, so the bar uses the tint instead. */
+:where(button, input, select, textarea, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px; }
+.brand-nav :focus-visible { outline-color: var(--on-header-2); }
+html.in-frame .brand-nav :focus-visible { outline-color: var(--accent); }
+
+/* headings */
+h1, .h1 { font-size: 1.5rem; }
+h2, .h2 { font-size: 1.375rem; }
+h3, .h3 { font-size: 1.25rem; }
+h4, .h4 { font-size: 1.125rem; }
+h5, .h5 { font-size: .9375rem; }
+h6, .h6 { font-size: .8125rem; }
+h1, h2, h3, h4, h5, h6 { font-weight: 700; letter-spacing: -.015em; color: var(--text); }
+
+/* ==========================================================================
+   The top header — standalone
+   ========================================================================== */
 .brand-nav {
-  background-color: var(--chrome); background-image: var(--chrome-nav);
-  border-bottom: 1px solid var(--chrome-line);
-  box-shadow: var(--shadow-1); position: relative;
+  --bs-navbar-padding-y: 0;
+  --bs-navbar-color: var(--on-header-2);
+  --bs-navbar-hover-color: #FFFFFF;
+  --bs-navbar-active-color: #FFFFFF;
+  --bs-navbar-brand-color: #FFFFFF;
+  --bs-navbar-brand-hover-color: #FFFFFF;
+  --bs-navbar-brand-font-size: 1rem;
+  --bs-navbar-nav-link-padding-x: .75rem;
+  --bs-navbar-toggler-border-color: rgba(47,143,104,.3);
+  --bs-navbar-toggler-border-radius: 8px;
+  --bs-navbar-toggler-focus-width: 2px;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-deep);
+  min-height: 56px;
+  font-size: .75rem;
+  z-index: 1030;
 }
-.brand-nav::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0;
-  height: 2px; pointer-events: none;
-  background: linear-gradient(90deg, transparent 0%, var(--gold-line) 12%,
-    var(--gold) 38%, #F0C97A 50%, var(--gold) 62%, var(--gold-line) 88%, transparent 100%); }
-.brand-nav .navbar-brand { color: var(--on-chrome); letter-spacing: -.2px; }
-.navbar-dark .navbar-nav .nav-link { color: var(--on-chrome-2); }
-.navbar-dark .navbar-nav .nav-link:hover,
-.navbar-dark .navbar-nav .nav-link.show { color: var(--on-chrome); }
-.brand-nav .navbar-toggler { border-color: var(--on-chrome-line); }
-.brand-nav .badge.bg-light { background: rgba(255,255,255,.14) !important;
-  color: var(--on-chrome) !important; }
+.brand-nav > .container-fluid { min-height: 55px; padding-inline: 1.5rem; gap: .5rem; }
+.brand-nav .navbar-brand { display: flex; align-items: center; gap: .625rem; margin-right: 1rem;
+  padding: 0; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.brand-logo {
+  flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px;
+  background: var(--accent); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 1rem; letter-spacing: .05em;
+  box-shadow: 0 1px 2px rgba(0,0,0,.1);
+}
+.brand-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.brand-name { font-size: 1rem; font-weight: 700; color: #fff; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 42vw; }
+.brand-name .brand-tag { color: var(--on-header-2); font-weight: 500; }
+.brand-sub { font-size: 11px; font-weight: 400; color: rgba(231,244,236,.8); letter-spacing: 0; }
 
-/* The module dropdown: gold marker for the open screen, not a brand fill —
-   the fill alone would be under 3:1 against the menu surface. */
-.dropdown-menu { --bs-dropdown-link-active-bg: var(--brand-100);
+/* header controls: the module switcher and the user chip */
+.brand-nav .nav-ctl {
+  display: inline-flex; align-items: center; gap: .5rem;
+  min-height: 36px; padding: .375rem .75rem !important;
+  border-radius: 8px; font-size: .75rem; font-weight: 500;
+  color: #fff !important;
+  background: var(--header-deep);
+  border: 1px solid var(--header-line);
+  transition: background-color .15s, border-color .15s;
+}
+.brand-nav .nav-ctl:hover, .brand-nav .nav-ctl.show { background: var(--header-hover); }
+.brand-nav .nav-ctl > .bi { color: var(--accent); font-size: .875rem; }
+.brand-nav .nav-ctl.dropdown-toggle::after { margin-left: .125rem; opacity: .7; }
+.brand-nav .nav-crumb-label { color: rgba(231,244,236,.7); font-weight: 400; }
+
+.brand-nav .user-chip {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .25rem .5rem !important; border-radius: 8px;
+  color: #fff !important; min-height: 40px;
+}
+.brand-nav .user-chip:hover, .brand-nav .user-chip.show { background: var(--header-deep); }
+.user-avatar {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 8px;
+  background: var(--accent); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .6875rem; font-weight: 700; letter-spacing: .02em;
+}
+.user-meta { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
+.user-role { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #fff; }
+.user-name { font-size: .625rem; font-family: var(--font-mono); color: rgba(231,244,236,.7); letter-spacing: 0; }
+.brand-nav .nav-divider { width: 1px; height: 24px; background: rgba(255,255,255,.1); margin-inline: .25rem; }
+.brand-nav .nav-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 8px; color: rgba(255,255,255,.7) !important;
+  padding: 0 !important; font-size: 1rem;
+}
+.brand-nav .nav-icon-btn:hover { color: #fff !important; background: var(--header-deep); }
+.brand-nav .navbar-toggler { padding: .375rem .5rem; }
+.brand-nav .navbar-toggler:focus { box-shadow: 0 0 0 2px var(--on-header-2); }
+
+@media (max-width: 991.98px) {
+  .brand-nav > .container-fluid { padding-inline: .75rem; }
+  .brand-nav .navbar-collapse { padding-block: .5rem .75rem; border-top: 1px solid rgba(255,255,255,.08); margin-top: .5rem; }
+  .brand-nav .navbar-nav { gap: .5rem; }
+  .brand-nav .nav-ctl, .brand-nav .user-chip { width: 100%; min-height: 44px; }
+  .brand-nav .nav-divider, .brand-nav .nav-icon-btn { display: none; }
+  .brand-nav .dropdown-menu { min-width: 0 !important; }
+}
+
+/* ==========================================================================
+   The header inside the Essa frame
+   --------------------------------------------------------------------------
+   The Essa app already draws the dark header, the context bar and a sidebar
+   listing these screens. A second dark bar under it reads as a second product,
+   so framed, the bar becomes a slim white sub-bar: the module switcher as a
+   breadcrumb chip, and the user menu — both kept and working.
+   `in-frame` is set on <html> by the first script in base.html's <head>.
+   ========================================================================== */
+html.in-frame .brand-nav {
+  --bs-navbar-color: var(--text);
+  --bs-navbar-hover-color: var(--brand);
+  --bs-navbar-active-color: var(--brand);
+  --bs-navbar-toggler-border-color: var(--line);
+  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2823, 34, 29, 0.75%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  min-height: 44px;
+  box-shadow: none;
+}
+html.in-frame .brand-nav > .container-fluid { min-height: 43px; padding-inline: 1.25rem; max-width: none; }
+html.in-frame .brand-nav .navbar-brand { display: none; }
+html.in-frame .brand-nav .nav-ctl {
+  min-height: 30px; padding: .25rem .625rem !important;
+  color: var(--brand) !important; font-weight: 600;
+  background: var(--tint); border-color: rgba(47,143,104,.2);
+}
+html.in-frame .brand-nav .nav-ctl:hover, html.in-frame .brand-nav .nav-ctl.show { background: var(--tint-hover); }
+html.in-frame .brand-nav .nav-ctl > .bi { color: var(--accent); }
+html.in-frame .brand-nav .nav-crumb-label { color: var(--muted); }
+html.in-frame .brand-nav .user-chip { color: var(--text) !important; min-height: 32px; padding: .125rem .375rem !important; }
+html.in-frame .brand-nav .user-chip:hover, html.in-frame .brand-nav .user-chip.show { background: var(--bg); }
+html.in-frame .user-avatar { width: 24px; height: 24px; font-size: .625rem; border-radius: 6px; }
+html.in-frame .user-role { color: var(--text); font-size: .6875rem; }
+html.in-frame .user-name { color: var(--muted); }
+html.in-frame .brand-nav .nav-divider { background: var(--line); height: 20px; }
+html.in-frame .brand-nav .nav-icon-btn { color: var(--muted) !important; width: 30px; height: 30px; }
+html.in-frame .brand-nav .nav-icon-btn:hover { color: var(--brand) !important; background: var(--tint); }
+html.in-frame .brand-nav .navbar-toggler:focus { box-shadow: 0 0 0 2px var(--accent); }
+html.in-frame .brand-nav .navbar-toggler { margin-left: auto; padding: .25rem .5rem; }
+html.in-frame .brand-nav .frame-title { display: inline-flex; }
+.brand-nav .frame-title { display: none; align-items: center; gap: .375rem; font-size: .6875rem;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-right: .75rem; white-space: nowrap; }
+html.in-frame main.container-fluid { max-width: none; padding: 1rem 1.25rem 1.5rem; }
+@media (max-width: 991.98px) {
+  html.in-frame .brand-nav .navbar-collapse { border-top-color: var(--line); }
+  html.in-frame .brand-nav > .container-fluid { padding-inline: .75rem; }
+}
+
+/* ==========================================================================
+   Dropdowns
+   ========================================================================== */
+.dropdown-menu {
+  --bs-dropdown-font-size: .75rem;
+  --bs-dropdown-color: var(--text);
+  --bs-dropdown-border-color: var(--line);
+  --bs-dropdown-border-radius: 12px;
+  --bs-dropdown-inner-border-radius: 11px;
+  --bs-dropdown-padding-y: .375rem;
+  --bs-dropdown-padding-x: .375rem;
+  --bs-dropdown-item-padding-y: .5rem;
+  --bs-dropdown-item-padding-x: .75rem;
+  --bs-dropdown-item-border-radius: 8px;
+  --bs-dropdown-link-color: var(--text);
+  --bs-dropdown-link-hover-color: var(--text);
+  --bs-dropdown-link-hover-bg: var(--bg);
   --bs-dropdown-link-active-color: var(--brand);
-  --bs-dropdown-link-hover-bg: var(--brand-50);
-  --bs-dropdown-border-color: var(--line); border-radius: var(--radius); }
-.dropdown-item.active { box-shadow: inset 3px 0 0 var(--gold-line); font-weight: 600; }
-.dropdown-item.active .text-muted { color: var(--brand-500) !important; }
-
-/* ---------- surfaces ---------- */
-.card { border: 0; border-radius: var(--radius); box-shadow: var(--shadow-1); }
-.card-header { background: var(--panel); border-bottom: 1px solid var(--line);
-  font-weight: 600; color: var(--text); }
-/* One mechanism, six families - a class sets these variables and nothing else,
-   the same way .dtile does in the warehouse. A card with no family keeps exactly
-   the look it had, so an unclassed .stat-card anywhere in the shop is unchanged. */
-.stat-card { --tile-bg: var(--panel); --tile-line: var(--line);
-  --tile-bar: transparent; --tile-val: var(--brand); --tile-lbl: var(--muted);
-  border: 0; border-left: 3px solid var(--tile-bar); border-radius: var(--radius-lg);
-  overflow: hidden; background: var(--tile-bg); box-shadow: var(--shadow-2); }
-.stat-card.t-count  { --tile-bg: var(--tile-count-bg);  --tile-bar: var(--tile-count-bar);
-  --tile-val: var(--tile-count-val);  --tile-lbl: var(--text-2); }
-.stat-card.t-stock  { --tile-bg: var(--tile-stock-bg);  --tile-bar: var(--tile-stock-bar);
-  --tile-val: var(--tile-stock-val);  --tile-lbl: var(--text-2); }
-.stat-card.t-move   { --tile-bg: var(--tile-move-bg);   --tile-bar: var(--tile-move-bar);
-  --tile-val: var(--tile-move-val);   --tile-lbl: var(--text-2); }
-.stat-card.t-money  { --tile-bg: var(--tile-money-bg);  --tile-bar: var(--tile-money-bar);
-  --tile-val: var(--tile-money-val);  --tile-lbl: var(--text-2); }
-.stat-card.t-back   { --tile-bg: var(--tile-back-bg);   --tile-bar: var(--tile-back-bar);
-  --tile-val: var(--tile-back-val);   --tile-lbl: var(--text-2); }
-.stat-card.t-adjust { --tile-bg: var(--tile-adjust-bg); --tile-bar: var(--tile-adjust-bar);
-  --tile-val: var(--tile-adjust-val); --tile-lbl: var(--text-2); }
-/* Bootstrap paints .card's background from its own variable, which would sit on
-   top of the tint. Re-pointed rather than fought with !important. */
-.stat-card.card { --bs-card-bg: var(--tile-bg); --bs-card-border-width: 0; }
-.stat-card .value { font-size: 1.6rem; font-weight: 700; color: var(--tile-val); }
-.stat-card .label { color: var(--tile-lbl); font-size: .85rem;
-  text-transform: uppercase; letter-spacing: .5px; }
-.list-group { --bs-list-group-border-color: var(--line);
-  --bs-list-group-action-hover-bg: var(--brand-50);
-  --bs-list-group-active-bg: var(--brand); --bs-list-group-active-border-color: var(--brand); }
-.table { --bs-table-border-color: var(--line); --bs-table-hover-bg: var(--brand-50);
-  --bs-table-striped-bg: var(--brand-50); }
-
-/* ---------- buttons ----------
-   .btn-brand is this app's primary action. Gold, dark label — the same button
-   "Upload invoice" is next door. .btn-primary is aliased onto it so the handful
-   of templates that reached for Bootstrap's own primary land in the same place
-   instead of on a stray blue. */
-.btn-brand, .btn-primary {
-  --bs-btn-color: var(--text);        --bs-btn-bg: var(--gold);
-  --bs-btn-border-color: var(--gold-line);
-  --bs-btn-hover-color: var(--text);  --bs-btn-hover-bg: var(--gold-700);
-  --bs-btn-hover-border-color: var(--gold-line);
-  --bs-btn-active-color: var(--text); --bs-btn-active-bg: #BE8A22;
-  --bs-btn-active-border-color: var(--gold-line);
-  --bs-btn-disabled-color: var(--text); --bs-btn-disabled-bg: var(--gold);
-  --bs-btn-disabled-border-color: var(--gold-line);
-  --bs-btn-focus-shadow-rgb: 168,122,46;
-  background-image: var(--gold-fill); font-weight: 600;
+  --bs-dropdown-link-active-bg: var(--tint);
+  --bs-dropdown-divider-bg: var(--line);
+  --bs-dropdown-divider-margin-y: .375rem;
+  --bs-dropdown-header-color: var(--muted);
+  --bs-dropdown-box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-2) !important;
+  max-height: calc(100vh - 80px); overflow-y: auto;
 }
-.btn-brand:hover, .btn-primary:hover { background-image: var(--gold-fill-hover);
-  box-shadow: var(--gold-glow); }
-/* On the chrome a gold fill is right, but a *white* one reads as a card sitting
-   on the bar. Nothing gold lives up there yet; if it does, it keeps this fill. */
+.dropdown-item { border-radius: 8px; font-weight: 500; position: relative; }
+.dropdown-item .bi { color: var(--accent); }
+.dropdown-item strong { font-weight: 600; font-size: .75rem; }
+.dropdown-item small, .dropdown-item .small { font-size: .6875rem; }
+.dropdown-item.active { font-weight: 600; box-shadow: inset 4px 0 0 var(--accent); }
+.dropdown-item.active .text-muted { color: var(--brand-450) !important; }
+.dropdown-item.active .bi { color: var(--brand); }
+.dropdown-header { font-size: .625rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
 
-/* Secondary: 44 templates use btn-outline-secondary as their quiet action, so
-   it carries the warm neutral rather than Bootstrap's cold grey. */
-.btn-outline-secondary {
-  --bs-btn-color: var(--text-2);        --bs-btn-border-color: var(--line-strong);
-  --bs-btn-hover-color: var(--brand);   --bs-btn-hover-bg: var(--brand-50);
-  --bs-btn-hover-border-color: var(--brand-300);
-  --bs-btn-active-color: var(--brand);  --bs-btn-active-bg: var(--brand-100);
-  --bs-btn-active-border-color: var(--brand-300);
-  --bs-btn-focus-shadow-rgb: 90,52,40;
-}
-.btn-outline-primary {
-  --bs-btn-color: var(--brand);         --bs-btn-border-color: var(--brand-300);
-  --bs-btn-hover-color: #fff;           --bs-btn-hover-bg: var(--brand);
-  --bs-btn-hover-border-color: var(--brand);
-  --bs-btn-active-color: #fff;          --bs-btn-active-bg: var(--brand-800);
-  --bs-btn-active-border-color: var(--brand-800);
-  --bs-btn-focus-shadow-rgb: 90,52,40;
-}
-.btn-outline-dark {
-  --bs-btn-color: var(--text);          --bs-btn-border-color: var(--line-strong);
-  --bs-btn-hover-bg: var(--text);       --bs-btn-hover-border-color: var(--text);
-  --bs-btn-active-bg: var(--text);      --bs-btn-active-border-color: var(--text);
-}
-.btn-success { --bs-btn-bg: var(--ok); --bs-btn-border-color: var(--ok);
-  --bs-btn-hover-bg: #196841; --bs-btn-hover-border-color: #196841;
-  --bs-btn-active-bg: #145735; --bs-btn-active-border-color: #145735; }
-.btn-outline-success { --bs-btn-color: var(--ok); --bs-btn-border-color: var(--ok);
-  --bs-btn-hover-bg: var(--ok); --bs-btn-hover-border-color: var(--ok); }
-.btn-danger { --bs-btn-bg: var(--danger); --bs-btn-border-color: var(--danger);
-  --bs-btn-hover-bg: #A62F23; --bs-btn-hover-border-color: #A62F23;
-  --bs-btn-active-bg: #8E281E; --bs-btn-active-border-color: #8E281E; }
-.btn-outline-danger { --bs-btn-color: var(--danger); --bs-btn-border-color: var(--danger);
-  --bs-btn-hover-bg: var(--danger); --bs-btn-hover-border-color: var(--danger); }
-.btn-outline-warning { --bs-btn-color: var(--warn); --bs-btn-border-color: var(--warn);
-  --bs-btn-hover-color: #fff; --bs-btn-hover-bg: var(--warn);
-  --bs-btn-hover-border-color: var(--warn); }
-
-/* ---------- inputs ---------- */
-.form-control, .form-select { border-color: var(--line-strong); color: var(--text); }
-.form-control:hover, .form-select:hover { border-color: var(--brand-300); }
-.form-control:focus, .form-select:focus, .form-check-input:focus {
-  border-color: var(--brand-300); box-shadow: var(--focus); }
-.form-check-input:checked { background-color: var(--brand); border-color: var(--brand); }
-.input-group-text { background: var(--panel-2); border-color: var(--line-strong);
-  color: var(--text-2); }
-
-/* ---------- density ----------
-   One place, once, for how big everything is. The alternative — writing
-   form-control-sm into forty templates — is the same decision taken forty times,
-   and the two screens somebody forgets are the ones that look wrong.
-
-   Bootstrap hardcodes `1rem` on the controls rather than reading
-   --bs-body-font-size, so each of them is named here; everything that already
-   sizes in em or off that variable follows on its own. */
-
-/* the page stops growing with the monitor, and the bar keeps its left edge */
+/* ==========================================================================
+   Page layout: page header, section panels, KPI cards, quick actions
+   ========================================================================== */
 .navbar > .container-fluid,
 main.container-fluid { max-width: var(--page-max); margin-inline: auto; }
+main.container-fluid { padding: 1.25rem 1.5rem 2rem; }
 
-/* controls: ~32px tall instead of Bootstrap's 38 */
-.form-control, .form-select, .input-group-text {
-  padding: var(--ctl-pad-y) var(--ctl-pad-x); font-size: .875rem;
-  line-height: 1.45; }
-.form-select { padding-right: 1.9rem; background-position: right .55rem center; }
-.form-control-sm, .form-select-sm, .input-group-sm > .form-control,
-.input-group-sm > .form-select, .input-group-sm > .input-group-text,
-.input-group-sm > .btn {
-  padding: var(--ctl-pad-y-sm) var(--ctl-pad-x-sm); font-size: .8125rem; }
-.form-select-sm { padding-right: 1.75rem; }
-.btn { --bs-btn-padding-y: var(--ctl-pad-y); --bs-btn-padding-x: .75rem;
-  --bs-btn-font-size: .875rem; --bs-btn-line-height: 1.45; }
-.btn-sm { --bs-btn-padding-y: var(--ctl-pad-y-sm); --bs-btn-padding-x: .55rem;
-  --bs-btn-font-size: .8125rem; }
-.form-label { margin-bottom: .2rem; font-size: .8rem; font-weight: 600;
-  color: var(--text-2); letter-spacing: .1px; }
-/* Several forms write `form-label small`, which was a fair thing to ask of a
-   16px label and is not one now — .small is .875em, so it would compound down to
-   11px. The label IS the small text on this scale; the extra class stops here. */
-.form-label.small { font-size: .8rem; }
-.form-text { font-size: .75rem; }
+/* page header (spec §4) */
+.page-head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: .75rem 1rem; padding-bottom: .75rem; margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.page-head.align-items-start { align-items: flex-start; }
+.page-head h4, .page-head .page-title {
+  font-size: 1.25rem; font-weight: 700; letter-spacing: -.025em; line-height: 1.25;
+  margin: 0; color: var(--text);
+}
+.page-head h4 > .bi, .page-head .page-title > .bi { color: var(--accent); font-size: .95em; margin-right: .25rem; }
+.page-head h4 .badge { vertical-align: middle; margin-left: .25rem; }
+.page-sub, .page-head .page-head-sub { font-size: .75rem; color: var(--muted); margin-top: .125rem; }
+.page-head .text-muted.small, .page-head > div > .small { font-size: .75rem; }
+.page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.page-head form.d-inline { margin: 0; }
+.code-chip {
+  display: inline-flex; align-items: center; font-family: var(--font-mono);
+  font-size: .75rem; font-weight: 700; color: var(--brand); background: var(--tint);
+  border: 1px solid rgba(47,143,104,.2); border-radius: 6px; padding: .125rem .625rem;
+  letter-spacing: 0; white-space: nowrap;
+}
+@media (min-width: 992px) { .page-head h4, .page-head .page-title { font-size: 1.375rem; } }
 
-/* The -lg controls belong to the floor and delivery screens, which are worked
-   one-handed on a phone: they are big because a thumb needs them to be, and they
-   keep the exact size they have always had.
-   They have to be RE-STATED rather than simply left alone. This file loads after
-   Bootstrap, so the plain `.form-control` and `.btn` rules above — same
-   specificity, later in the cascade — would otherwise beat Bootstrap's own -lg
-   and quietly shrink a scan box down to 32px. The values below are Bootstrap's,
-   unchanged; they are in rem off the ROOT, which the 14px body does not touch. */
-.form-control-lg, .form-select-lg,
-.input-group-lg > .form-control, .input-group-lg > .form-select,
-.input-group-lg > .input-group-text, .input-group-lg > .btn {
-  padding: .5rem 1rem; font-size: 1.25rem; line-height: 1.5;
-  border-radius: var(--radius); }
-.form-select-lg { padding-right: 3rem; }
-.btn-lg, .input-group-lg > .btn {
-  --bs-btn-padding-y: .5rem; --bs-btn-padding-x: 1rem;
-  --bs-btn-font-size: 1.25rem; --bs-btn-line-height: 1.5; }
+/* cards = section panels (spec §4) */
+.card {
+  --bs-card-bg: var(--panel);
+  --bs-card-border-color: var(--line);
+  --bs-card-border-width: 1px;
+  --bs-card-border-radius: 12px;
+  --bs-card-inner-border-radius: 11px;
+  --bs-card-cap-bg: var(--panel-2);
+  --bs-card-cap-color: var(--text);
+  --bs-card-cap-padding-y: .75rem;
+  --bs-card-cap-padding-x: 1rem;
+  --bs-card-spacer-y: 1rem;
+  --bs-card-spacer-x: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.card-header, .card-footer { border-color: var(--line); }
+.card-header {
+  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text); line-height: 1.5;
+}
+.card-header > .bi, .card-header > span > .bi:first-child, .card-header .panel-title > .bi { color: var(--brand); margin-right: .125rem; }
+.card-header .small, .card-header .text-muted, .card-header .panel-sub, .card-header .btn,
+.card-header .form-control, .card-header .form-select {
+  text-transform: none; letter-spacing: normal; font-weight: 400; }
+.card-header .btn { font-weight: 500; }
+.card-header strong { font-weight: 700; }
+.card-header .panel-sub { display: block; font-size: .75rem; color: var(--muted); margin-top: .125rem; }
+.card-header h5, .card-header h6 { font-size: inherit; font-weight: inherit; letter-spacing: inherit;
+  text-transform: inherit; line-height: inherit; margin: 0; color: inherit; }
+.card-header h5 > .bi, .card-header h6 > .bi { color: var(--brand); margin-right: .125rem; }
+.card-footer { background: var(--panel-2); font-size: .75rem; color: var(--muted); padding: .625rem 1rem; }
+.panel-chip {
+  display: inline-flex; align-items: center; gap: .25rem;
+  font-family: var(--font-mono); font-size: .75rem; font-weight: 600; letter-spacing: 0;
+  text-transform: none; color: var(--brand); background: var(--tint);
+  border: 1px solid rgba(47,143,104,.2); border-radius: 6px; padding: .125rem .625rem;
+}
 
-/* A short value gets a short box. Text and textareas are left alone — a name, a
-   remark or a search box has no natural width and should fill its column. */
+/* A card that opens with a bare title gets the header band without any change
+   to its markup: the title is pulled out to the card's edges. */
+.card.p-2 > h5:first-child, .card.p-2 > h6:first-child,
+.card.p-3 > h5:first-child, .card.p-3 > h6:first-child,
+.card.p-4 > h5:first-child, .card.p-4 > h6:first-child {
+  display: flex; align-items: center; gap: .375rem;
+  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text); background: var(--panel-2); border-bottom: 1px solid var(--line);
+  padding: .75rem 1rem; line-height: 1.4;
+}
+.card.p-2 > h5:first-child, .card.p-2 > h6:first-child { margin: -.5rem -.5rem .5rem; }
+.card.p-3 > h5:first-child, .card.p-3 > h6:first-child { margin: -1rem -1rem 1rem; }
+.card.p-4 > h5:first-child, .card.p-4 > h6:first-child { margin: -1.5rem -1.5rem 1rem; }
+.card > h5:first-child > .bi, .card > h6:first-child > .bi { color: var(--brand); }
+/* …and the same for a card whose first block is a title with a button beside it */
+.card.p-3 > .d-flex:first-child > h6.mb-0:first-child,
+.card.p-3 > .d-flex:first-child > h5.mb-0:first-child {
+  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.card.p-3 > .d-flex.justify-content-between:first-child:has(> h6.mb-0:first-child) {
+  margin: -1rem -1rem 1rem !important; padding: .5rem 1rem; min-height: 44px;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); }
+
+/* the title of a section that sits between cards */
+h6.text-muted { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+
+/* KPI card (spec §4) */
+.kpi-grid { display: grid; gap: .75rem; grid-template-columns: repeat(1, minmax(0, 1fr)); margin-bottom: 1.25rem; }
+@media (min-width: 480px)  { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 768px)  { .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .kpi-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.kpi-card {
+  display: flex; flex-direction: column; justify-content: space-between;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 1rem; box-shadow: var(--shadow-1); min-width: 0;
+  color: inherit; text-decoration: none !important;
+  transition: border-color .15s, box-shadow .15s;
+}
+a.kpi-card:hover { border-color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.kpi-card.highlight { border-color: var(--accent); background: rgba(231,244,236,.2); }
+.kpi-top { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.kpi-label { font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kpi-icon {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 8px;
+  background: var(--tint); color: var(--brand);
+  display: inline-flex; align-items: center; justify-content: center; font-size: .875rem;
+}
+.kpi-icon.warn { background: var(--warn-bg); color: var(--warn-icon); }
+.kpi-badge { flex: 0 0 auto; font-family: var(--font-mono); font-size: .625rem; font-weight: 500;
+  color: var(--brand); background: var(--tint); border: 1px solid rgba(47,143,104,.2);
+  border-radius: 6px; padding: .0625rem .5rem; }
+.kpi-value { margin-top: .5rem; font-size: 1.25rem; font-weight: 700; letter-spacing: -.025em;
+  line-height: 1.3; color: var(--text); font-variant-numeric: tabular-nums; word-break: break-word; }
+@media (min-width: 576px) { .kpi-value { font-size: 1.375rem; } }
+.kpi-sub { margin-top: .25rem; font-size: .6875rem; color: var(--muted); line-height: 1.3; }
+
+/* The shop's older stat cards, re-drawn as KPI cards. One mechanism, six
+   families — a class sets the variables and nothing else. The family now marks
+   the card with a dot before its label; the value reads in the text colour. */
+.stat-card { --tile-bg: var(--panel); --tile-line: var(--line);
+  --tile-bar: var(--accent); --tile-val: var(--text); --tile-lbl: var(--muted);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow-1); overflow: hidden; padding: 1rem; }
+.stat-card.t-count  { --tile-bar: var(--tile-count-bar); }
+.stat-card.t-stock  { --tile-bar: var(--tile-stock-bar); }
+.stat-card.t-move   { --tile-bar: var(--tile-move-bar); }
+.stat-card.t-money  { --tile-bar: var(--tile-money-bar); }
+.stat-card.t-back   { --tile-bar: var(--tile-back-bar); }
+.stat-card.t-adjust { --tile-bar: var(--tile-adjust-bar); }
+.stat-card.card { --bs-card-bg: var(--panel); --bs-card-border-width: 1px; }
+.stat-card .label { display: flex; align-items: center; gap: .375rem; color: var(--tile-lbl);
+  font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.stat-card .label::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--tile-bar); }
+.stat-card .value { margin-top: .5rem; font-size: 1.375rem; font-weight: 700; letter-spacing: -.025em;
+  color: var(--tile-val); font-variant-numeric: tabular-nums; line-height: 1.3; }
+
+/* quick action card (spec §4) */
+.qa-grid { display: grid; gap: .75rem; grid-template-columns: repeat(1, minmax(0, 1fr)); }
+@media (min-width: 480px)  { .qa-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 992px)  { .qa-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .qa-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.qa-card {
+  display: flex; align-items: flex-start; gap: .75rem; height: 100%;
+  padding: .875rem; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow-1); color: inherit; text-decoration: none !important;
+  transition: border-color .15s, background-color .15s;
+}
+.qa-card:hover { border-color: var(--accent); background: var(--bg); }
+.qa-ico { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 8px; background: var(--tint);
+  color: var(--brand); display: inline-flex; align-items: center; justify-content: center; font-size: .875rem; }
+.qa-body { flex: 1 1 auto; min-width: 0; }
+.qa-title { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  font-size: .75rem; font-weight: 700; color: var(--text); }
+.qa-title .bi-arrow-right { color: var(--accent); font-size: .875rem; transition: transform .15s; }
+.qa-card:hover .qa-title .bi-arrow-right { transform: translateX(2px); }
+.qa-desc { margin-top: .25rem; font-size: .6875rem; color: var(--muted); line-height: 1.35; }
+
+/* empty state (spec §4) */
+.empty-state { text-align: center; padding: 2rem 1rem; color: var(--muted); }
+.empty-state .empty-ico { width: 48px; height: 48px; border-radius: 50%; background: var(--tint);
+  color: var(--brand); display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1.25rem; margin-bottom: .5rem; }
+.empty-state .empty-title { font-size: .875rem; font-weight: 600; color: var(--text); }
+.empty-state .empty-desc { font-size: .75rem; max-width: 380px; margin: .25rem auto 0; }
+
+/* ==========================================================================
+   Tables (spec §4)
+   ========================================================================== */
+.table {
+  --bs-table-color: var(--text);
+  --bs-table-bg: transparent;
+  --bs-table-border-color: var(--line);
+  --bs-table-hover-bg: var(--bg);
+  --bs-table-hover-color: var(--text);
+  --bs-table-striped-bg: var(--bg);
+  --bs-table-active-bg: var(--tint);
+  --bs-table-cell-padding-y: .625rem;
+  --bs-table-cell-padding-x: .875rem;
+  font-size: .75rem;
+}
+.table-sm { --bs-table-cell-padding-y: .375rem; --bs-table-cell-padding-x: .625rem; }
+.table > thead > tr > th, .table > thead > tr > td {
+  background-color: var(--panel-2);
+  color: var(--muted);
+  font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  border-bottom: 1px solid var(--line);
+  padding-top: .625rem; padding-bottom: .625rem;
+  vertical-align: bottom;
+}
+.table-sm > thead > tr > th { padding-top: .5rem; padding-bottom: .5rem; }
+.table > :not(caption) > * > * { border-bottom-color: var(--line); }
+.table > tbody > tr:last-child > * { border-bottom-width: 0; }
+/* a table that runs to a panel's edges lines up with the panel's header text */
+.card > .table > :not(caption) > tr > :first-child,
+.card > .table-responsive > .table > :not(caption) > tr > :first-child { padding-left: 1rem; }
+.card > .table > :not(caption) > tr > :last-child,
+.card > .table-responsive > .table > :not(caption) > tr > :last-child { padding-right: 1rem; }
+.table td.text-end { font-family: var(--font-mono); font-size: .9em; letter-spacing: 0;
+  font-variant-numeric: tabular-nums; }
+.table td.text-end .btn, .table td.text-end .badge, .table td.text-end form { font-family: var(--font-sans); }
+.table td.text-end .badge { font-family: var(--font-mono); }
+.table tbody a:not(.btn) { font-weight: 600; color: var(--brand); }
+.table tbody a:not(.btn):hover { color: var(--brand-450); }
+.table-success { --bs-table-bg: var(--brand-50); --bs-table-color: var(--text);
+  --bs-table-border-color: var(--line); --bs-table-hover-bg: var(--tint); --bs-table-striped-bg: var(--tint); }
+.table-warning { --bs-table-bg: var(--warn-bg); --bs-table-color: var(--text);
+  --bs-table-border-color: var(--line); --bs-table-hover-bg: #FEF3C7; }
+.table-danger { --bs-table-bg: var(--danger-bg); --bs-table-color: var(--text);
+  --bs-table-border-color: var(--line); --bs-table-hover-bg: #FFE4E6; }
+.table-light { --bs-table-bg: var(--panel-2); --bs-table-color: var(--text);
+  --bs-table-border-color: var(--line); --bs-table-hover-bg: var(--panel-3); }
+.table-responsive { scrollbar-width: thin; }
+
+/* amber, and it means the same thing here as on the warehouse screens */
+.low-stock, .low-stock > td { background: var(--warn-bg) !important; }
+
+/* ==========================================================================
+   Status badges (spec §4)
+   --------------------------------------------------------------------------
+   Every Bootstrap colour a template or script puts on a .badge lands in one of
+   the four groups, so badges drawn by JavaScript follow without a change.
+     success  → text-bg-success / bg-success / text-bg-primary / text-bg-dark
+     pending  → text-bg-warning / bg-warning
+     neutral  → text-bg-secondary / text-bg-light (and bg-*)
+     danger   → text-bg-danger / bg-danger
+     info     → text-bg-info / bg-info (tint, neutral edge)
+   .status-badge.success|pending|neutral|danger is the same thing by name, with
+   the leading dot.
+   ========================================================================== */
+.badge {
+  --bs-badge-padding-x: .5rem;
+  --bs-badge-padding-y: .1875rem;
+  --bs-badge-font-size: .6875rem;
+  --bs-badge-font-weight: 500;
+  --bs-badge-border-radius: 6px;
+  display: inline-flex; align-items: center; gap: .25rem;
+  font-family: var(--font-mono); letter-spacing: .02em; text-transform: uppercase;
+  line-height: 1.35; border: 1px solid transparent; vertical-align: middle;
+  white-space: nowrap;
+}
+.badge .bi { font-size: 1em; }
+.badge.text-bg-success, .badge.bg-success,
+.badge.text-bg-primary, .badge.bg-primary,
+.badge.text-bg-dark, .badge.bg-dark,
+.status-badge.success {
+  background-color: #E7F4EC !important; color: #0B3D2E !important; border-color: rgba(47,143,104,.3) !important; }
+.badge.text-bg-warning, .badge.bg-warning, .status-badge.pending {
+  background-color: #FFFBEB !important; color: #78350F !important; border-color: #FDE68A !important; }
+.badge.text-bg-secondary, .badge.bg-secondary,
+.badge.text-bg-light, .badge.bg-light, .status-badge.neutral {
+  background-color: #F7F9F7 !important; color: #68756E !important; border-color: #DCE5DF !important; }
+.badge.text-bg-danger, .badge.bg-danger, .status-badge.danger {
+  background-color: #FFF1F2 !important; color: #9F1239 !important; border-color: #FECDD3 !important; }
+.badge.text-bg-info, .badge.bg-info, .status-badge.info {
+  background-color: #E7F4EC !important; color: #0B3D2E !important; border-color: #DCE5DF !important; }
+/* a badge with no colour class (e.g. the floor session code) is a code chip */
+.badge:not([class*="bg-"]):not(.status-badge) { background: var(--tint); color: var(--brand); border-color: rgba(47,143,104,.2); }
+.status-badge {
+  display: inline-flex; align-items: center; gap: .375rem;
+  font-family: var(--font-mono); font-size: .6875rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .02em; line-height: 1.35;
+  padding: .1875rem .5rem; border-radius: 6px; border: 1px solid transparent; white-space: nowrap;
+}
+.status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8; }
+.status-badge.sm { font-size: .625rem; padding: .125rem .5rem; }
+/* A status column in a table gets the dot too. */
+td > .badge.text-bg-success::before, td > .badge.text-bg-warning::before,
+td > .badge.text-bg-secondary::before, td > .badge.text-bg-danger::before,
+td > .badge.text-bg-dark::before, td > .badge.text-bg-primary::before,
+td > .badge.text-bg-info::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8; }
+/* a counter inside a button (filter chips) stays a plain number */
+.btn .badge { font-size: .625rem; padding: .0625rem .375rem; margin-left: .25rem; }
+
+/* ==========================================================================
+   Buttons (spec §4)
+   ========================================================================== */
+.btn {
+  --bs-btn-font-family: var(--font-sans);
+  --bs-btn-padding-y: .4375rem;   /* 7px + 20px line + 2px border = 36px */
+  --bs-btn-padding-x: .875rem;
+  --bs-btn-font-size: .75rem;
+  --bs-btn-font-weight: 500;
+  --bs-btn-line-height: 1.25rem;
+  --bs-btn-border-radius: 8px;
+  --bs-btn-box-shadow: 0 1px 2px rgba(0,0,0,.03);
+  --bs-btn-disabled-opacity: .5;
+  --bs-btn-focus-box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2F8F68;
+  display: inline-flex; align-items: center; justify-content: center; gap: .375rem;
+  letter-spacing: -.005em;
+  box-shadow: var(--bs-btn-box-shadow);
+  transition: color .15s, background-color .15s, border-color .15s, box-shadow .15s;
+}
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2F8F68; }
+.btn.w-100, .d-grid > .btn { display: flex; }
+.btn-sm, .btn-group-sm > .btn {
+  --bs-btn-padding-y: .3125rem;   /* 32px */
+  --bs-btn-padding-x: .625rem;
+  --bs-btn-font-size: .75rem;
+  --bs-btn-border-radius: 8px;
+}
+.btn-lg, .btn-group-lg > .btn {
+  --bs-btn-padding-y: .6875rem;   /* 46px — thumb-sized, the floor and delivery screens */
+  --bs-btn-padding-x: 1.125rem;
+  --bs-btn-font-size: .9375rem;
+  --bs-btn-font-weight: 600;
+  --bs-btn-line-height: 1.375rem;
+  --bs-btn-border-radius: 8px;
+}
+.btn-link { box-shadow: none; --bs-btn-color: #257353; --bs-btn-hover-color: #0B3D2E;
+  --bs-btn-active-color: #0B3D2E; --bs-btn-disabled-color: #68756E; }
+.btn-close { box-shadow: none; }
+
+/* primary: dark green. .btn-brand is the name the templates use. */
+.btn-brand, .btn-primary {
+  --bs-btn-color: #fff;               --bs-btn-bg: #0B3D2E;
+  --bs-btn-border-color: #0B3D2E;
+  --bs-btn-hover-color: #fff;         --bs-btn-hover-bg: #082C21;
+  --bs-btn-hover-border-color: #082C21;
+  --bs-btn-active-color: #fff;        --bs-btn-active-bg: #082C21;
+  --bs-btn-active-border-color: #082C21;
+  --bs-btn-disabled-color: #fff;      --bs-btn-disabled-bg: #0B3D2E;
+  --bs-btn-disabled-border-color: #0B3D2E;
+  --bs-btn-focus-shadow-rgb: 47,143,104;
+}
+/* secondary: white with a border */
+.btn-secondary, .btn-light, .btn-outline-secondary, .btn-outline-dark, .btn-outline-light {
+  --bs-btn-color: #17221D;            --bs-btn-bg: #FFFFFF;
+  --bs-btn-border-color: #DCE5DF;
+  --bs-btn-hover-color: #17221D;      --bs-btn-hover-bg: #F7F9F7;
+  --bs-btn-hover-border-color: #C5D2CA;
+  --bs-btn-active-color: #0B3D2E;     --bs-btn-active-bg: #E7F4EC;
+  --bs-btn-active-border-color: #2F8F68;
+  --bs-btn-disabled-color: #68756E;   --bs-btn-disabled-bg: #FFFFFF;
+  --bs-btn-disabled-border-color: #DCE5DF;
+  --bs-btn-focus-shadow-rgb: 47,143,104;
+}
+/* outline: transparent, green text; checked (a picked tender, a picked tab)
+   fills dark like the design's segmented control */
+.btn-outline-primary {
+  --bs-btn-color: #0B3D2E;            --bs-btn-bg: transparent;
+  --bs-btn-border-color: #DCE5DF;
+  --bs-btn-hover-color: #0B3D2E;      --bs-btn-hover-bg: #E7F4EC;
+  --bs-btn-hover-border-color: #2F8F68;
+  --bs-btn-active-color: #fff;        --bs-btn-active-bg: #0B3D2E;
+  --bs-btn-active-border-color: #0B3D2E;
+  --bs-btn-disabled-color: #68756E;   --bs-btn-disabled-bg: transparent;
+  --bs-btn-disabled-border-color: #DCE5DF;
+  --bs-btn-focus-shadow-rgb: 47,143,104;
+  background-color: var(--bs-btn-bg);
+}
+.btn-outline-primary .bi { color: var(--accent); }
+.btn-outline-primary:hover .bi { color: var(--brand); }
+.btn-check:checked + .btn .bi, .btn.active .bi, .btn:active .bi { color: inherit; }
+.btn-check:checked + .btn-outline-secondary, .btn-check:checked + .btn-outline-dark {
+  --bs-btn-active-color: #fff; --bs-btn-active-bg: #0B3D2E; --bs-btn-active-border-color: #0B3D2E; }
+/* success: the accent */
+.btn-success {
+  --bs-btn-color: #fff;               --bs-btn-bg: #2F8F68;
+  --bs-btn-border-color: #2F8F68;
+  --bs-btn-hover-color: #fff;         --bs-btn-hover-bg: #257353;
+  --bs-btn-hover-border-color: #257353;
+  --bs-btn-active-color: #fff;        --bs-btn-active-bg: #257353;
+  --bs-btn-active-border-color: #257353;
+  --bs-btn-disabled-color: #fff;      --bs-btn-disabled-bg: #2F8F68;
+  --bs-btn-disabled-border-color: #2F8F68;
+  --bs-btn-focus-shadow-rgb: 47,143,104;
+}
+.btn-outline-success {
+  --bs-btn-color: #257353;            --bs-btn-bg: transparent;
+  --bs-btn-border-color: #C1DDD2;
+  --bs-btn-hover-color: #fff;         --bs-btn-hover-bg: #2F8F68;
+  --bs-btn-hover-border-color: #2F8F68;
+  --bs-btn-active-color: #fff;        --bs-btn-active-bg: #257353;
+  --bs-btn-active-border-color: #257353;
+  --bs-btn-disabled-color: #257353;   --bs-btn-disabled-border-color: #C1DDD2;
+  --bs-btn-focus-shadow-rgb: 47,143,104;
+}
+/* danger: rose */
+.btn-danger {
+  --bs-btn-color: #fff;               --bs-btn-bg: #E11D48;
+  --bs-btn-border-color: #BE123C;
+  --bs-btn-hover-color: #fff;         --bs-btn-hover-bg: #BE123C;
+  --bs-btn-hover-border-color: #BE123C;
+  --bs-btn-active-color: #fff;        --bs-btn-active-bg: #9F1239;
+  --bs-btn-active-border-color: #9F1239;
+  --bs-btn-disabled-color: #fff;      --bs-btn-disabled-bg: #E11D48;
+  --bs-btn-disabled-border-color: #BE123C;
+  --bs-btn-focus-shadow-rgb: 225,29,72;
+}
+.btn-outline-danger {
+  --bs-btn-color: #BE123C;            --bs-btn-bg: transparent;
+  --bs-btn-border-color: #FECDD3;
+  --bs-btn-hover-color: #fff;         --bs-btn-hover-bg: #E11D48;
+  --bs-btn-hover-border-color: #BE123C;
+  --bs-btn-active-color: #fff;        --bs-btn-active-bg: #BE123C;
+  --bs-btn-active-border-color: #BE123C;
+  --bs-btn-disabled-color: #BE123C;   --bs-btn-disabled-border-color: #FECDD3;
+  --bs-btn-focus-shadow-rgb: 225,29,72;
+}
+/* warning / info: amber and tint, for the few filter chips that carry them */
+.btn-warning {
+  --bs-btn-color: #78350F;            --bs-btn-bg: #FEF3C7;
+  --bs-btn-border-color: #FCD34D;
+  --bs-btn-hover-color: #78350F;      --bs-btn-hover-bg: #FDE68A;
+  --bs-btn-hover-border-color: #FBBF24;
+  --bs-btn-active-color: #78350F;     --bs-btn-active-bg: #FDE68A;
+  --bs-btn-active-border-color: #FBBF24;
+  --bs-btn-focus-shadow-rgb: 217,119,6;
+}
+.btn-outline-warning {
+  --bs-btn-color: #B45309;            --bs-btn-bg: transparent;
+  --bs-btn-border-color: #FDE68A;
+  --bs-btn-hover-color: #78350F;      --bs-btn-hover-bg: #FFFBEB;
+  --bs-btn-hover-border-color: #FBBF24;
+  --bs-btn-active-color: #78350F;     --bs-btn-active-bg: #FEF3C7;
+  --bs-btn-active-border-color: #FBBF24;
+  --bs-btn-focus-shadow-rgb: 217,119,6;
+}
+.btn-info {
+  --bs-btn-color: #0B3D2E;            --bs-btn-bg: #E7F4EC;
+  --bs-btn-border-color: #C1DDD2;
+  --bs-btn-hover-color: #0B3D2E;      --bs-btn-hover-bg: #D5EFE0;
+  --bs-btn-hover-border-color: #2F8F68;
+  --bs-btn-active-color: #0B3D2E;     --bs-btn-active-bg: #D5EFE0;
+  --bs-btn-active-border-color: #2F8F68;
+  --bs-btn-focus-shadow-rgb: 47,143,104;
+}
+.btn-outline-info {
+  --bs-btn-color: #0B3D2E;            --bs-btn-bg: transparent;
+  --bs-btn-border-color: #DCE5DF;
+  --bs-btn-hover-color: #0B3D2E;      --bs-btn-hover-bg: #E7F4EC;
+  --bs-btn-hover-border-color: #2F8F68;
+  --bs-btn-active-color: #0B3D2E;     --bs-btn-active-bg: #D5EFE0;
+  --bs-btn-active-border-color: #2F8F68;
+  --bs-btn-focus-shadow-rgb: 47,143,104;
+}
+.btn-dark {
+  --bs-btn-color: #fff; --bs-btn-bg: #17221D; --bs-btn-border-color: #17221D;
+  --bs-btn-hover-color: #fff; --bs-btn-hover-bg: #0B3D2E; --bs-btn-hover-border-color: #0B3D2E;
+  --bs-btn-active-bg: #082C21; --bs-btn-active-border-color: #082C21;
+}
+.btn-group { box-shadow: 0 1px 2px rgba(0,0,0,.03); border-radius: 8px; }
+.btn-group > .btn { box-shadow: none; }
+
+/* ==========================================================================
+   Inputs (spec §4)
+   ========================================================================== */
+.form-control, .form-select {
+  font-family: var(--font-sans);
+  font-size: .8125rem; line-height: 1.25rem;
+  padding: .5rem .75rem;           /* 8px + 20px line + 2px border = 38px */
+  color: var(--text); background-color: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.form-select { padding-right: 2.25rem; background-position: right .75rem center; }
+.form-control::placeholder { color: rgba(104,117,110,.75); opacity: 1; }
+.form-control:hover, .form-select:hover { border-color: var(--line-strong); }
+.form-control:focus, .form-select:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); outline: none; }
+.form-control:focus-visible, .form-select:focus-visible { outline: none; }
+.form-control:disabled, .form-select:disabled, .form-control[readonly] {
+  background-color: var(--bg); color: var(--muted); }
+.form-control[readonly]:focus { border-color: var(--line); box-shadow: none; }
+textarea.form-control { min-height: 2.375rem; }
+.form-control-sm, .form-select-sm {
+  font-size: .75rem; line-height: 1.25rem; padding: .3125rem .625rem;  /* 32px */
+  border-radius: 8px; min-height: 0; }
+.form-select-sm { padding-right: 2rem; background-position: right .625rem center; }
+/* The -lg controls belong to the floor and delivery screens, worked one-handed
+   on a phone: they are big because a thumb needs them to be. */
+.form-control-lg, .form-select-lg {
+  font-size: 1rem; line-height: 1.375rem; padding: .6875rem .875rem;   /* 46px */
+  border-radius: 8px; }
+.form-select-lg { padding-right: 2.5rem; }
+.form-check-input { border-color: #C5D2CA; }
+.form-check-input:checked { background-color: var(--accent); border-color: var(--accent); }
+.form-check-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(47,143,104,.25); }
+.form-switch .form-check-input:focus {
+  --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%232F8F68'/%3e%3c/svg%3e"); }
+.form-label { margin-bottom: .25rem; font-size: .75rem; font-weight: 600; color: var(--text); letter-spacing: -.005em; }
+.form-label.small { font-size: .75rem; }
+.form-text { font-size: .6875rem; color: var(--muted); margin-top: .25rem; }
+.input-group-text {
+  font-size: .8125rem; line-height: 1.25rem; padding: .5rem .75rem;
+  background: var(--bg); border-color: var(--line); color: var(--muted); border-radius: 8px; }
+.input-group-text .bi { color: var(--accent); }
+.input-group > .btn { position: relative; z-index: 2; box-shadow: none;
+  --bs-btn-padding-y: .5rem; }                                  /* 38px, level with the input */
+.input-group-sm > .form-control, .input-group-sm > .form-select, .input-group-sm > .input-group-text {
+  font-size: .75rem; line-height: 1.25rem; padding: .3125rem .625rem; border-radius: 8px; }
+.input-group-sm > .btn { --bs-btn-padding-y: .3125rem; --bs-btn-padding-x: .625rem; --bs-btn-font-size: .75rem; }
+.input-group-lg > .form-control, .input-group-lg > .form-select, .input-group-lg > .input-group-text {
+  font-size: 1rem; line-height: 1.375rem; padding: .6875rem .875rem; border-radius: 8px; }
+.input-group-lg > .btn { --bs-btn-padding-y: .6875rem; --bs-btn-padding-x: 1rem; --bs-btn-font-size: .9375rem; }
+.input-group > .form-control:focus, .input-group > .form-select:focus { z-index: 5; }
+
+/* A short value gets a short box. Text and textareas are left alone. */
 .form-control[type=number], .form-control[type=date], .form-control[type=time],
 .form-control[type=month], .form-control[type=tel] { max-width: var(--field-short); }
-/* …except where the width is not the input's to decide: an input-group is one
-   joined control, and a table cell is already as wide as its column. */
 .input-group > .form-control, .input-group > .form-select,
 td .form-control, td .form-select { max-width: none; }
 
-/* headings, brought back in proportion to a 14px body */
-h1, .h1 { font-size: 1.6rem; }
-h2, .h2 { font-size: 1.4rem; }
-h3, .h3 { font-size: 1.2rem; }
-h4, .h4 { font-size: 1.1rem; }
-h5, .h5 { font-size: 1rem; }
-h6, .h6 { font-size: .875rem; }
-h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+/* ==========================================================================
+   Other Bootstrap components
+   ========================================================================== */
+.list-group {
+  --bs-list-group-color: var(--text);
+  --bs-list-group-bg: var(--panel);
+  --bs-list-group-border-color: var(--line);
+  --bs-list-group-border-radius: 12px;
+  --bs-list-group-item-padding-y: .625rem;
+  --bs-list-group-item-padding-x: 1rem;
+  --bs-list-group-action-color: var(--text);
+  --bs-list-group-action-hover-color: var(--text);
+  --bs-list-group-action-hover-bg: var(--bg);
+  --bs-list-group-action-active-color: var(--brand);
+  --bs-list-group-action-active-bg: var(--tint);
+  --bs-list-group-active-color: var(--brand);
+  --bs-list-group-active-bg: var(--tint);
+  --bs-list-group-active-border-color: var(--line);
+  --bs-list-group-disabled-color: var(--muted);
+  font-size: .8125rem;
+}
+.list-group-item.active { font-weight: 600; box-shadow: inset 4px 0 0 var(--accent); }
 
-/* surfaces and rows follow the same step down, so the space around the content
-   shrinks with the content rather than leaving it rattling in its card */
-.card { --bs-card-spacer-y: .85rem; --bs-card-spacer-x: .85rem;
-  --bs-card-cap-padding-y: .55rem; --bs-card-cap-padding-x: .85rem; }
-.table { --bs-table-cell-padding-y: .4rem; --bs-table-cell-padding-x: .5rem; }
-.table-sm { --bs-table-cell-padding-y: .25rem; --bs-table-cell-padding-x: .4rem; }
-.alert { --bs-alert-padding-y: .6rem; --bs-alert-padding-x: .85rem; }
-.dropdown-menu { --bs-dropdown-font-size: .875rem;
-  --bs-dropdown-item-padding-y: .3rem; --bs-dropdown-item-padding-x: .8rem; }
-.list-group { --bs-list-group-item-padding-y: .45rem;
-  --bs-list-group-item-padding-x: .75rem; }
-.brand-nav { --bs-navbar-brand-font-size: 1.05rem;
-  --bs-navbar-padding-y: .35rem; --bs-navbar-nav-link-padding-x: .7rem; }
-.nav-link { font-size: .875rem; }
+.nav-link { font-size: .75rem; font-weight: 500;
+  --bs-nav-link-color: var(--muted); --bs-nav-link-hover-color: var(--brand); }
+.nav-tabs {
+  --bs-nav-tabs-border-color: var(--line);
+  --bs-nav-tabs-border-radius: 8px;
+  --bs-nav-tabs-link-hover-border-color: transparent;
+  --bs-nav-tabs-link-active-color: var(--brand);
+  --bs-nav-tabs-link-active-bg: var(--panel);
+  --bs-nav-tabs-link-active-border-color: var(--line) var(--line) var(--panel);
+}
+.nav-tabs .nav-link { padding: .4375rem .875rem; }
+.nav-tabs .nav-link:hover:not(.active) { background: rgba(231,244,236,.4); }
+.nav-tabs .nav-link.active { font-weight: 600; }
+.nav-tabs .nav-link.active::before { content: ''; display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--accent); margin-right: .375rem; vertical-align: middle; }
+.nav-pills {
+  --bs-nav-pills-border-radius: 6px;
+  --bs-nav-pills-link-active-color: #fff;
+  --bs-nav-pills-link-active-bg: var(--brand);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; gap: 2px;
+}
+.nav-pills .nav-link { padding: .3125rem .75rem; }
+.nav-pills .nav-link.active { font-weight: 600; }
 
-/* ---------- flashes ---------- */
-.alert-success { --bs-alert-color: var(--ok); --bs-alert-bg: var(--ok-bg);
-  --bs-alert-border-color: var(--ok-line); }
-.alert-warning { --bs-alert-color: var(--warn); --bs-alert-bg: var(--warn-bg);
-  --bs-alert-border-color: var(--warn-line); }
-.alert-danger, .alert-error { --bs-alert-color: var(--danger); --bs-alert-bg: var(--danger-bg);
-  --bs-alert-border-color: var(--danger-line); }
-.alert-info, .alert-message { --bs-alert-color: var(--info); --bs-alert-bg: var(--info-bg);
-  --bs-alert-border-color: var(--info-line); }
-.table-warning { --bs-table-bg: var(--warn-bg); --bs-table-color: var(--text); }
-.table-danger { --bs-table-bg: var(--danger-bg); --bs-table-color: var(--text); }
+.modal { --bs-modal-border-color: var(--line); --bs-modal-border-radius: 12px;
+  --bs-modal-inner-border-radius: 11px; --bs-modal-box-shadow: var(--shadow-modal);
+  --bs-modal-header-padding: .875rem 1.25rem; --bs-modal-padding: 1rem 1.25rem;
+  --bs-modal-footer-bg: var(--panel-2); --bs-modal-header-border-color: var(--line);
+  --bs-modal-footer-border-color: var(--line); --bs-modal-title-line-height: 1.4; }
+.modal-content { box-shadow: var(--shadow-modal); overflow: hidden; }
+.modal-header { background: var(--panel-2); }
+.modal-title { font-size: 1rem; font-weight: 700; letter-spacing: -.015em; }
+.modal-title .bi { color: var(--brand); }
+.modal-header .btn-close { width: 36px; height: 36px; padding: 0; margin: -.5rem -.5rem -.5rem auto;
+  border-radius: 8px; background-size: .75rem; }
+.modal-header .btn-close:hover { background-color: var(--tint); }
+.modal-footer { gap: .5rem; }
+.modal-footer > * { margin: 0; }
+.modal-backdrop { --bs-backdrop-bg: #0B3D2E; --bs-backdrop-opacity: .4; }
+.modal-backdrop.show { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+/* phones: a bottom sheet (spec §5) */
+@media (max-width: 575.98px) {
+  .modal-dialog:not(.modal-fullscreen-sm-down) {
+    margin: 0; min-height: 100%; display: flex; align-items: flex-end; }
+  .modal-dialog:not(.modal-fullscreen-sm-down) .modal-content {
+    border-radius: 16px 16px 0 0; border-bottom: 0; }
+  .modal-dialog:not(.modal-fullscreen-sm-down) .modal-content::before {
+    content: ''; display: block; width: 40px; height: 4px; border-radius: 2px;
+    background: #DCE5DF; margin: .5rem auto 0; flex: 0 0 auto; }
+  .modal-dialog:not(.modal-fullscreen-sm-down) .modal-header { background: var(--panel); }
+  .modal.fade .modal-dialog:not(.modal-fullscreen-sm-down) { transform: translateY(40px); }
+  .modal.show .modal-dialog:not(.modal-fullscreen-sm-down) { transform: none; }
+  .modal-footer > .btn { flex: 1 1 0; min-height: 44px; }
+}
 
-/* ---------- counter ---------- */
+.alert {
+  --bs-alert-padding-y: .625rem; --bs-alert-padding-x: .875rem;
+  --bs-alert-border-radius: 12px; --bs-alert-margin-bottom: 1rem;
+  font-size: .75rem; line-height: 1.5; box-shadow: var(--shadow-1);
+}
+.alert .bi { margin-right: .25rem; }
+.alert-success, .alert-message { --bs-alert-color: #0B3D2E; --bs-alert-bg: #E7F4EC;
+  --bs-alert-border-color: rgba(47,143,104,.3); --bs-alert-link-color: #0B3D2E; }
+.alert-success .bi { color: #2F8F68; }
+.alert-warning { --bs-alert-color: #78350F; --bs-alert-bg: #FFFBEB;
+  --bs-alert-border-color: #FDE68A; --bs-alert-link-color: #78350F; }
+.alert-warning .bi { color: #D97706; }
+.alert-danger, .alert-error { --bs-alert-color: #9F1239; --bs-alert-bg: #FFF1F2;
+  --bs-alert-border-color: #FECDD3; --bs-alert-link-color: #9F1239; }
+.alert-danger .bi, .alert-error .bi { color: #E11D48; }
+.alert-info { --bs-alert-color: #0B3D2E; --bs-alert-bg: #E7F4EC;
+  --bs-alert-border-color: rgba(47,143,104,.2); --bs-alert-link-color: #0B3D2E; }
+.alert-info .bi { color: #2F8F68; }
+.alert-secondary, .alert-light { --bs-alert-color: #3F4B45; --bs-alert-bg: #F7F9F7;
+  --bs-alert-border-color: #DCE5DF; --bs-alert-link-color: #0B3D2E; }
+.alert-secondary .bi { color: #2F8F68; }
+.alert a { font-weight: 600; }
+.alert-dismissible .btn-close { padding: .8rem .875rem; }
+
+.pagination {
+  --bs-pagination-font-size: .75rem;
+  --bs-pagination-color: var(--brand);
+  --bs-pagination-bg: var(--panel);
+  --bs-pagination-border-color: var(--line);
+  --bs-pagination-border-radius: 8px;
+  --bs-pagination-hover-color: var(--brand);
+  --bs-pagination-hover-bg: var(--tint);
+  --bs-pagination-hover-border-color: var(--accent);
+  --bs-pagination-focus-color: var(--brand);
+  --bs-pagination-focus-bg: var(--tint);
+  --bs-pagination-focus-box-shadow: 0 0 0 2px rgba(47,143,104,.35);
+  --bs-pagination-active-color: #fff;
+  --bs-pagination-active-bg: var(--brand);
+  --bs-pagination-active-border-color: var(--brand);
+  --bs-pagination-disabled-color: var(--muted);
+  --bs-pagination-disabled-bg: var(--bg);
+  --bs-pagination-disabled-border-color: var(--line);
+}
+.progress, .progress-stacked {
+  --bs-progress-height: 6px; --bs-progress-bg: var(--tint);
+  --bs-progress-border-radius: 999px; --bs-progress-bar-bg: var(--accent);
+  --bs-progress-box-shadow: none;
+}
+.tooltip { --bs-tooltip-bg: #0B3D2E; --bs-tooltip-border-radius: 8px; --bs-tooltip-font-size: .6875rem; }
+.popover { --bs-popover-border-color: var(--line); --bs-popover-border-radius: 12px;
+  --bs-popover-box-shadow: var(--shadow-2); --bs-popover-header-bg: var(--panel-2); }
+.toast { --bs-toast-border-color: var(--line); --bs-toast-border-radius: 12px;
+  --bs-toast-box-shadow: var(--shadow-2); --bs-toast-header-bg: var(--panel); }
+.text-success { color: #257353 !important; }
+.text-warning { color: #B45309 !important; }
+
+/* flashes rendered by base.html */
+main > .alert-dismissible { display: flex; align-items: center; }
+
+/* ==========================================================================
+   Counter
+   ========================================================================== */
 .pos-product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; max-height: 60vh; overflow: auto; }
-.pos-product { border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px; cursor: pointer; text-align: center; background: var(--panel); transition: .15s; }
-.pos-product:hover { border-color: var(--brand); background: var(--brand-50); transform: translateY(-2px); }
-.pos-product .name { font-size: .85rem; font-weight: 600; }
-.pos-product .price { color: var(--brand-dark); font-weight: 700; }
-.pos-product .stock { font-size: .7rem; color: var(--muted); }
+.pos-product { border: 1px solid var(--line); border-radius: 12px; padding: 12px; cursor: pointer; text-align: left; background: var(--panel); transition: border-color .15s, background-color .15s; box-shadow: var(--shadow-1); }
+.pos-product:hover { border-color: var(--accent); background: rgba(231,244,236,.4); }
+.pos-product .name { font-size: .75rem; font-weight: 600; }
+.pos-product .price { color: var(--brand); font-weight: 700; font-family: var(--font-mono); font-size: .75rem; }
+.pos-product .stock { font-size: .625rem; color: var(--muted); }
 
 .cart-table tbody tr td { vertical-align: middle; }
+.cart-table .qty-input { font-family: var(--font-mono); text-align: center; padding-inline: .375rem; }
 
-/* amber, and it means the same thing here as on the warehouse screens */
-.low-stock { background: var(--warn-bg) !important; }
+/* the counter's context strips: who is serving, and where the till is */
+.pos-strip { background: var(--panel); }
+.pos-strip-label { font-size: .625rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-right: .25rem; }
+.pos-strip b { color: var(--text); font-weight: 700; }
+.pos-strip .sep { color: var(--line); }
+.pos-total { font-family: var(--font-mono); color: var(--brand); font-variant-numeric: tabular-nums; }
+.pos-total-row { background: var(--tint); border: 1px solid rgba(47,143,104,.3); border-radius: 12px; padding: .625rem .75rem; }
+.pos-total-row > strong:first-child { font-size: .6875rem; text-transform: uppercase; letter-spacing: .05em; color: var(--brand); }
+.pos-total-row #grandTotal { font-size: 1.125rem; }
 
+/* ==========================================================================
+   Print
+   ========================================================================== */
 @media print {
   .no-print, nav, .alert { display: none !important; }
   body { background: #fff; }
-  .container-fluid { padding: 0; max-width: none; margin: 0; }
+  .container-fluid, main.container-fluid, html.in-frame main.container-fluid { padding: 0; max-width: none; margin: 0; }
+  .card { box-shadow: none; }
+  .table > thead > tr > th { background-color: transparent !important; color: #17221D; }
 }
 
 .invoice-print { max-width: 800px; margin: 0 auto; padding: 20px; background: #fff; }
 .invoice-header { border-bottom: 2px solid var(--brand); padding-bottom: 10px; margin-bottom: 15px; }
-.invoice-total-row { font-weight: 700; font-size: 1.1rem; border-top: 2px solid var(--text); }
+.invoice-total-row { font-weight: 700; font-size: .9375rem; border-top: 2px solid var(--text); }
+.invoice-total-row td { font-family: var(--font-sans); }
 
 /* motion is polish, and polish is what a reduced-motion request opts out of */
 @media (prefers-reduced-motion: reduce) {
-  .pos-product { transition-property: background, border-color, box-shadow; }
-  .pos-product:hover, .btn-brand:hover, .btn-primary:hover { transform: none; }
+  .pos-product, .qa-card, .kpi-card, .btn { transition: none; }
+  .qa-card:hover .qa-title .bi-arrow-right { transform: none; }
+  .modal-backdrop.show { backdrop-filter: none; }
 }
 
-/* mobile-friendly */
+/* ==========================================================================
+   Phones (spec §5)
+   ========================================================================== */
 @media (max-width: 768px) {
-  .stat-card .value { font-size: 1.3rem; }
+  main.container-fluid, html.in-frame main.container-fluid { padding: .875rem .75rem 1.5rem; }
+  .stat-card .value { font-size: 1.25rem; }
   .pos-product-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
-  /* The desktop step-down buys screen space, which a phone does not have to
-     spare in the first place — and a 32px control is below what a thumb can hit
-     reliably. Density is a mouse-and-monitor decision, so it stops here. */
-  :root { --ctl-pad-y: .45rem; --ctl-pad-x: .7rem;
-          --ctl-pad-y-sm: .3rem; --ctl-pad-x-sm: .5rem; }
-  .btn { --bs-btn-padding-x: .85rem; }
+  /* touch targets: 42px controls, 40px buttons */
+  .form-control, .form-select, .input-group-text { padding-top: .625rem; padding-bottom: .625rem; font-size: .875rem; }
+  .form-control-sm, .form-select-sm { padding-top: .5rem; padding-bottom: .5rem; }
+  .btn { --bs-btn-padding-y: .5625rem; --bs-btn-padding-x: .875rem; }
+  .btn-sm { --bs-btn-padding-y: .5rem; }
+  .input-group > .btn { --bs-btn-padding-y: .625rem; }
+  .input-group-sm > .btn { --bs-btn-padding-y: .5rem; }
+  .page-head { align-items: stretch; }
+  .page-head > div:not(:first-child) { width: 100%; }
   /* one column wide, so a capped price box would just look truncated */
   .form-control[type=number], .form-control[type=date], .form-control[type=time],
   .form-control[type=month], .form-control[type=tel] { max-width: none; }

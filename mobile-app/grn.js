@@ -131,12 +131,12 @@ function GrnList({ api, onPick, onLogout }) {
       <View style={s.topbar}>
         <Text style={s.topTitle}>Goods receipts</Text>
         <Text style={s.topCount}>{list.filter((p) => p.status === 'draft').length} to receive</Text>
-        <TouchableOpacity onPress={onLogout}><Text style={[s.link, { marginTop: 0 }]}>Logout</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onLogout}><Text style={[s.link, s.topLink]}>Logout</Text></TouchableOpacity>
       </View>
       <View style={{ flexDirection: 'row', gap: 8, padding: 12 }}>
         {['draft', 'posted', 'all'].map((st) => (
           <TouchableOpacity key={st} style={[s.chip, status === st && s.chipOn]} onPress={() => setStatus(st)}>
-            <Text style={[s.chipText, status === st && { color: '#fff' }]}>{st}</Text>
+            <Text style={[s.chipText, status === st && s.chipTextOn]}>{st}</Text>
           </TouchableOpacity>
         ))}
         <TouchableOpacity style={[s.chip, { marginLeft: 'auto' }]} onPress={load}><Text style={s.chipText}>↻</Text></TouchableOpacity>
@@ -223,7 +223,7 @@ function GrnDetail({ api, grnId, cats, flash, onBack, onBreakdown, onPosted }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={s.topbar}>
-        <TouchableOpacity onPress={onBack}><Text style={[s.link, { marginTop: 0 }]}>‹ GRNs</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onBack}><Text style={[s.link, s.topLink]}>‹ GRNs</Text></TouchableOpacity>
         <Text style={s.topTitle} numberOfLines={1}>{grn.supplier_name || 'GRN #' + grn.id}</Text>
         <Badge text={grn.status} tone={grn.status === 'posted' ? 'ok' : 'warn'} />
       </View>
@@ -271,7 +271,7 @@ function GrnDetail({ api, grnId, cats, flash, onBack, onBreakdown, onPosted }) {
             {/* Category here means the products are born mapped instead of landing
                 "unmapped" in Inventory for someone to fix one by one. */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
-              <Text style={[s.fieldLabel, { marginBottom: 0, width: 62 }]}>Category</Text>
+              <Text style={[s.fieldLabel, { marginBottom: 0, width: 72 }]}>Category</Text>
               {editable ? (
                 <Select compact allowClear style={{ flex: 1 }} value={l.category || ''} options={cats}
                   placeholder={l.category_suggestion?.best || 'auto'}
@@ -480,7 +480,7 @@ function Breakdown({ api, line, options, cats, onBack, onSaved }) {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={s.topbar}>
-        <TouchableOpacity onPress={onBack}><Text style={[s.link, { marginTop: 0 }]}>‹ Cancel</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onBack}><Text style={[s.link, s.topLink]}>‹ Cancel</Text></TouchableOpacity>
         <Text style={s.topTitle} numberOfLines={1}>Break down</Text>
       </View>
 
@@ -646,7 +646,7 @@ function Posted({ api, grn, result, onBack, onDetail }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={s.topbar}>
-        <TouchableOpacity onPress={onBack}><Text style={[s.link, { marginTop: 0 }]}>‹ GRNs</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onBack}><Text style={[s.link, s.topLink]}>‹ GRNs</Text></TouchableOpacity>
         <Text style={s.topTitle}>In inventory</Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 12 }}>

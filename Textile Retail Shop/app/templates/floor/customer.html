@@ -3,7 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0B3D2E">
 <title>Your bill · {{ SHOP_NAME }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 <style>
@@ -11,50 +15,69 @@
      base.html, so it carries the shared tokens itself. Same values as
      static/css/app.css — the shop and Essa are one palette. */
   :root {
-    --brand: #5A3428; --brand-dark: #40241B; --brand-500: #7A4C3D;
-    --brand-100: #EFE4DF; --brand-50: #F9F4F2;
-    --chrome: #4B2509; --chrome-nav: linear-gradient(180deg, #45220A 0%, #3A1C05 100%);
-    --gold: #D4A24C; --gold-line: #A87A2E;
-    --bg: #F5F2F0; --panel: #FFFFFF; --line: #E4DCD7; --text: #2A2320; --muted: #7C6F68;
-    --ok: #1E7A4D; --ok-bg: #E7F4ED;
-    --warn: #B45309; --warn-bg: #FDF2E3;
-    --danger: #C0392B; --danger-bg: #FBEBE9;
-    --info: #1F6FB2; --info-bg: #E9F2FA;
+    --brand: #0B3D2E; --brand-dark: #0B3D2E; --brand-500: #2F8F68;
+    --brand-100: #E7F4EC; --brand-50: #F5FBF7;
+    --header-bg: #0B3D2E; --header-deep: #082C21;
+    --bg: #F7F9F7; --panel: #FFFFFF; --line: #DCE5DF; --text: #17221D; --muted: #68756E;
+    --ok: #0B3D2E; --ok-bg: #E7F4EC; --ok-btn: #2F8F68;
+    --warn: #78350F; --warn-bg: #FFFBEB; --warn-line: #FDE68A;
+    --danger: #9F1239; --danger-bg: #FFF1F2; --danger-btn: #E11D48;
+    --info: #0B3D2E; --info-bg: #F7F9F7;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
-  body { background: var(--bg); color: var(--text);
-    font-family: system-ui,-apple-system,sans-serif; padding-bottom: 120px; }
-  /* the chrome, with the gold hairline that finishes it everywhere else */
-  .brand-bar { background-color: var(--chrome); background-image: var(--chrome-nav);
-    color:#fff; padding: 12px 16px; position: relative; }
-  .brand-bar::after { content:''; position:absolute; left:0; right:0; bottom:0; height:2px;
-    background: linear-gradient(90deg, transparent 0%, var(--gold-line) 12%,
-      var(--gold) 38%, #F0C97A 50%, var(--gold) 62%, var(--gold-line) 88%, transparent 100%); }
-  .price { color: var(--brand-dark); font-weight: 700; }
-  .status-strip { padding: 10px 16px; text-align:center; font-weight:600; }
+  body { background: var(--bg); color: var(--text); font-size: .875rem;
+    font-family: var(--font-sans); letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased; padding-bottom: 120px; }
+  /* the design's top header */
+  .brand-bar { background: var(--header-bg); border-bottom: 1px solid var(--header-deep);
+    color:#fff; padding: 10px 16px; min-height: 56px; gap: 12px; }
+  .brand-logo { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; background: #2F8F68;
+    color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
+  .brand-sub { font-size: 11px; color: rgba(231,244,236,.8); }
+  .brand-bar .text-end { font-size: 11px; color: rgba(231,244,236,.8); }
+  .brand-bar .text-end strong { color: #fff; font-size: 12px; }
+  .price { color: var(--brand-dark); font-weight: 700; font-family: var(--font-mono); font-size: .8125rem; }
+  .status-strip { padding: 10px 16px; text-align:center; font-weight:600; font-size: .8125rem;
+    border-bottom: 1px solid var(--line); }
   /* Every strip below is a status, so each one keeps a semantic colour rather
      than the brand — "approved" must not be mistakeable for "just the shop". */
   .status-open { background: var(--info-bg); color: var(--info); }
-  .status-await { background: var(--warn-bg); color: var(--warn); }
-  .status-approved { background: var(--ok-bg); color: var(--ok); }
-  .status-rejected { background: var(--danger-bg); color: var(--danger); }
+  .status-await { background: var(--warn-bg); color: var(--warn); border-bottom-color: var(--warn-line); }
+  .status-approved { background: var(--ok-bg); color: var(--ok); border-bottom-color: rgba(47,143,104,.3); }
+  .status-rejected { background: var(--danger-bg); color: var(--danger); border-bottom-color: #FECDD3; }
   .status-completed { background: var(--brand-100); color: var(--brand-dark); }
-  .status-cancelled { background:#EAE4E0; color: var(--muted); }
+  .status-cancelled { background: #F7F9F7; color: var(--muted); }
   .action-fab { position: fixed; bottom: 0; left: 0; right: 0; padding: 12px;
-    background: var(--panel); border-top:1px solid var(--line); }
-  .btn-approve { background: var(--ok); color:#fff; }
-  .btn-reject { background: var(--danger); color:#fff; }
-  .item-row { padding: 12px 16px; border-bottom: 1px solid var(--line); display:flex; justify-content:space-between; }
-  .totals { padding: 12px 16px; background: var(--panel); margin-top:8px; }
-  .totals-row { display:flex; justify-content:space-between; padding: 4px 0; }
-  .totals-total { font-size: 1.4rem; font-weight: 700; color: var(--brand-dark); border-top: 2px solid var(--text); padding-top: 8px; margin-top: 8px; }
+    background: rgba(255,255,255,.95); border-top:1px solid var(--line);
+    box-shadow: 0 -4px 16px rgba(0,0,0,.08); }
+  .action-fab .btn { border-radius: 12px; font-weight: 700; font-size: .9375rem; min-height: 48px; }
+  .btn-approve { background: var(--ok-btn); border-color: var(--ok-btn); color:#fff; }
+  .btn-approve:hover, .btn-approve:active { background: #257353 !important; border-color: #257353 !important; color: #fff !important; }
+  .btn-reject { background: var(--danger-btn); border-color: #BE123C; color:#fff; }
+  .btn-reject:hover, .btn-reject:active { background: #BE123C !important; border-color: #BE123C !important; color: #fff !important; }
+  #itemsBox { border-bottom: 1px solid var(--line); }
+  .item-row { padding: 12px 16px; border-bottom: 1px solid var(--line); display:flex; justify-content:space-between; gap: 12px; }
+  .item-row:last-child { border-bottom: 0; }
+  .item-row .small { font-size: .6875rem; }
+  .totals { padding: 12px 16px; background: var(--panel); margin: 8px 12px 0; border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+  .totals-row { display:flex; justify-content:space-between; padding: 4px 0; font-size: .8125rem; }
+  .totals-row span:last-child { font-family: var(--font-mono); }
+  .totals-total { font-size: 1.25rem; font-weight: 700; color: var(--brand-dark); border-top: 1px solid var(--line); padding-top: 10px; margin-top: 8px; }
+  .totals-total span:first-child { font-family: var(--font-sans); font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; align-self: center; }
+  .text-muted { color: var(--muted) !important; }
 </style>
 </head>
 <body>
 
 <div class="brand-bar d-flex justify-content-between align-items-center">
-  <div>
-    <div style="font-weight:700; font-size:1.1rem;">{{ SHOP_NAME }}</div>
-    <div class="small">Live bill · session {{ s.code }}</div>
+  <div class="d-flex align-items-center gap-2">
+    <span class="brand-logo" aria-hidden="true">E</span>
+    <div>
+      <div style="font-weight:700; font-size:1rem; letter-spacing:-.02em;">{{ SHOP_NAME }}</div>
+      <div class="brand-sub">Live bill · session {{ s.code }}</div>
+    </div>
   </div>
   <div class="small text-end">Salesperson<br><strong>{{ s.salesperson.full_name }}</strong></div>
 </div>
