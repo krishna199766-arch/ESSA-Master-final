@@ -11882,6 +11882,9 @@ function AccessEditor({ user, catalog, onSave, onClose, toast }) {
   // them — the same "nothing recorded means unrestricted" rule the screen map
   // above follows, and what keeps every existing account working untouched.
   const [whs, setWhs] = useState(() => [...(user.permissions?.warehouses || [])])
+  // How much of the Store: 'admin' (every screen — what nothing recorded means)
+  // or 'user' (Billing Counter and Store Reports). See services/permissions.
+  const [store, setStore] = useState(() => (user.permissions?.store === 'user' ? 'user' : 'admin'))
   const [busy, setBusy] = useState(false)
   // The grid is normally drawn from the catalog that rides along with the user
   // list. When that is missing the screen must not open as an empty box: an
@@ -11934,15 +11937,18 @@ function AccessEditor({ user, catalog, onSave, onClose, toast }) {
   const submit = async () => {
     setBusy(true)
     try {
-      await api.setUserPermissions(user.id, { screens: map, data, warehouses: whs })
+      await api.setUserPermissions(user.id, { screens: map, data, warehouses: whs, store })
       const where = whs.length
         ? `${whs.length} warehouse(s)`
         : 'every warehouse'
-      toast(Object.keys(map).length
+      const inStore = store === 'user' ? ' · Store: Billing & Reports only' : ''
+      toast((Object.keys(map).length
         ? `✓ ${user.username} is restricted to ${Object.keys(map).length} screen(s), ${where}`
         : whs.length
           ? `✓ ${user.username} may work in ${where} — screens still decided by their role`
-          : `✓ ${user.username} is back to their role — nothing restricted`, 'ok')
+          : store === 'user'
+            ? `✓ ${user.username} is saved`
+            : `✓ ${user.username} is back to their role — nothing restricted`) + inStore, 'ok')
       await onSave(); onClose()
     } catch (e) { toast(e.detail || 'Could not save that', 'err') }
     setBusy(false)
@@ -12056,6 +12062,27 @@ function AccessEditor({ user, catalog, onSave, onClose, toast }) {
             ))}
           </div>
 
+          <h4 style={{ marginTop: 18 }}>Store / POS</h4>
+          <div className="small" style={{ marginBottom: 8 }}>
+            What this account may open in the Store. <b>User</b> sees only the
+            Billing Counter and Store Reports — the other Store screens leave the
+            menu and are refused if reached another way. The Store&apos;s own
+            sign-in still applies underneath: its Reports need a manager or
+            admin login there.
+          </div>
+          <div className="datagrid">
+            {(cat.store_access || [
+              { key: 'admin', label: 'Admin', why: 'every Store screen' },
+              { key: 'user', label: 'User', why: 'Billing Counter and Store Reports only' },
+            ]).map((s) => (
+              <label className="mcheck" key={s.key}>
+                <input type="radio" name="store-access" checked={store === s.key}
+                  onChange={() => setStore(s.key)} />
+                <b>{s.label}</b>&nbsp;— {s.why}
+              </label>
+            ))}
+          </div>
+
           <h4 style={{ marginTop: 18 }}>Figures to withhold</h4>
           <div className="small" style={{ marginBottom: 8 }}>
             Ticked here, the figure is stripped by the server before it reaches
@@ -12073,8 +12100,8 @@ function AccessEditor({ user, catalog, onSave, onClose, toast }) {
           </div>
         </div>
         <div className="modal-foot">
-          <button className="btn" onClick={() => { setMap({}); setData([]); setWhs([]) }}
-            title="Back to role-only — every screen and every warehouse">Clear all</button>
+          <button className="btn" onClick={() => { setMap({}); setData([]); setWhs([]); setStore('admin') }}
+            title="Back to role-only — every screen, every warehouse and the whole Store">Clear all</button>
           <span style={{ flex: 1 }} />
           <button className="btn" onClick={onClose}>Cancel</button>
           <button className="btn primary" disabled={busy} onClick={submit}>
@@ -12205,6 +12232,12 @@ function Users({ toast, me }) {
                         onChange={(e) => patch(u, { role: e.target.value }, `✓ ${u.username} is now ${ROLE_LABEL[e.target.value]}`)}>
                         {roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
+                    )}
+                    {u.permissions?.store === 'user' && (
+                      <div style={{ marginTop: 4 }}>
+                        <span className="badge" title="Store access: Billing Counter and Store Reports only — change it under Access">
+                          Store · User</span>
+                      </div>
                     )}
                   </td>
                   <td className="small">{u.last_login_at ? when(u.last_login_at) : <span title="This account has never been used">never</span>}</td>
@@ -14281,6 +14314,12 @@ const POS_SCREENS = [
 
 const POS_ITEMS = [POS_HOME, null, ...POS_SCREENS]
 
+// A Store USER (Users & Access → Store / POS) gets these two and nothing else —
+// not the Store Dashboard either, which is the store's takings at a glance. The
+// shop refuses every other screen itself (its app/modules.py, told by the /pos
+// mount), so this is the menu agreeing with the server, not the enforcement.
+const POS_USER_KEYS = new Set(['pos:counter', 'pos:reports'])
+
 // One frame, keyed on the path so choosing another screen from the menu loads
 // it rather than leaving the frame on whatever it had drifted to.
 function PosScreen({ screen, available, error, warehouse: wh }) {
@@ -15554,7 +15593,7 @@ export default function App() {
     // dashboard when somebody chose Store before they chose a building.
     // Leaving lands on whichever company screen this account can actually have:
     // the Central Dashboard for an admin, the warehouse picker for the floor.
-    setTab(w ? (land || (pickFor === 'store' ? 'pos:home' : 'dashboard'))
+    setTab(w ? (land || (pickFor === 'store' ? storeHome : 'dashboard'))
       : (atLeast(role, 'admin') ? 'central' : 'pickwh'))
     setPickFor(null)
   }
@@ -15597,6 +15636,11 @@ export default function App() {
   //: what this ACCOUNT may open, screen by screen. Empty means unrestricted and
   //: the role decides on its own — see services/permissions.has_map.
   const [perms, setPerms] = useState({})
+  // Narrowed to billing and reports in the Store — see POS_USER_KEYS. Where the
+  // Store opens for them is the counter, since its dashboard is not theirs.
+  const storeUser = perms?.store === 'user'
+  const storeHome = storeUser ? 'pos:counter' : 'pos:home'
+  const posItems = storeUser ? POS_ITEMS.filter((p) => p && POS_USER_KEYS.has(p.key)) : POS_ITEMS
   const [showPassword, setShowPassword] = useState(false)
 
   // Where an account lands when it is outside every warehouse. The Central
@@ -15616,7 +15660,10 @@ export default function App() {
     if (here && COMPANY_ONLY.has(tab)) { setTab('dashboard'); return }
     if (!here && tab !== 'pickwh' && !COMPANY_LEVEL.has(tab)) setTab(homeTab)
     if (!here && tab === 'central' && !canCentral) setTab('pickwh')
-  }, [here, tab, canCentral, homeTab])
+    // A remembered Store tab this account is no longer given — the last person
+    // at this terminal was an admin, or the access was narrowed since.
+    if (here && storeUser && String(tab).startsWith('pos:') && !POS_USER_KEYS.has(tab)) setTab(storeHome)
+  }, [here, tab, canCentral, homeTab, storeUser, storeHome])
 
   // The stores this warehouse supplies, so the menu can call them by the names
   // somebody gave them. Re-read when the warehouse changes — a store belongs to
@@ -15785,7 +15832,7 @@ export default function App() {
   //  is keyed on the warehouse and remounts when it changes.
   const availableHere = (k) => {
     // The shop is reached from inside the warehouse that supplies it.
-    if (String(k).startsWith('pos:')) return !!here
+    if (String(k).startsWith('pos:')) return !!here && posItems.some((p) => p && p.key === k)
     const m = MODULES.find((x) => x.key === k)
     if (!m) return false
     return modules.includes(m)
@@ -15856,20 +15903,20 @@ export default function App() {
       if (here) enterWarehouse(null); else setTab(homeTab)
       return
     }
-    if (here) { setTab(target === 'store' ? 'pos:home' : 'dashboard'); return }
+    if (here) { setTab(target === 'store' ? storeHome : 'dashboard'); return }
     // A building has to be chosen first. With only one to choose from, choosing
     // it for them is not a decision taken away — it is a click saved.
-    if (whList.length === 1) { enterWarehouse(whList[0], target === 'store' ? 'pos:home' : 'dashboard'); return }
+    if (whList.length === 1) { enterWarehouse(whList[0], target === 'store' ? storeHome : 'dashboard'); return }
     setPickFor(target); setTab('pickwh')
   }
   const pickWarehouse = (id) => {
     const w = whList.find((x) => String(x.id) === String(id))
-    if (w && String(w.id) !== String(here?.id)) enterWarehouse(w, ws === 'store' ? 'pos:home' : 'dashboard')
+    if (w && String(w.id) !== String(here?.id)) enterWarehouse(w, ws === 'store' ? storeHome : 'dashboard')
   }
 
   // What the sidebar lists at each altitude.
   const navItems = ws === 'store'
-    ? POS_ITEMS.map((p) => (p && p.key === 'pos:counter' ? { ...p, badge: 'POS' } : p))
+    ? posItems.map((p) => (p && p.key === 'pos:counter' ? { ...p, badge: 'POS' } : p))
     : here
       ? [DASHBOARD, null, ...modules]
       : [...modules.filter((m) => m.key === 'central'),
@@ -15886,7 +15933,7 @@ export default function App() {
   const jumpGroups = [
     ...(here
       ? [{ title: `Warehouse · ${here.name}`, items: [DASHBOARD, ...modules] },
-         { title: storeLabel, items: POS_ITEMS.filter(Boolean) }]
+         { title: storeLabel, items: posItems.filter(Boolean) }]
       : [{ title: 'Central', items: tidyRules(navItems).filter(Boolean) }]),
     { title: 'Workspaces', items: [
       { key: 'ws:central', label: 'Central', blurb: 'The whole company — every warehouse at once' },
@@ -16120,9 +16167,13 @@ export default function App() {
   function screenFor(k) {
     // A `pos:` tab is a screen of the shop rather than one of ours, and is
     // served in a frame — so it is answered before the warehouse chain.
-    const ps = POS_ITEMS.find((p) => p && p.key === k)
+    const ps = posItems.find((p) => p && p.key === k)
     if (ps) return <PosScreen screen={ps} available={status?.pos?.available}
       error={status?.pos?.error} warehouse={here} />
+    // A Store screen this account is not given draws nothing for the one render
+    // before the reconciling effect above moves it to the counter — rather than
+    // loading a frame the shop would only refuse.
+    if (String(k).startsWith('pos:')) return null
     return (
       k === 'dashboard' ? (
         <Dashboard modules={modules} go={setTab} company={status?.company?.name}

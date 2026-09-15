@@ -54,6 +54,9 @@
             <span>{{ CURRENT_MODULE.label if CURRENT_MODULE else 'Dashboard' }}</span>
           </a>
           <ul class="dropdown-menu shadow" style="min-width:320px">
+            {# A Store user's two screens are the whole menu — the dashboard is
+               not one of them, and only forwards to the counter. #}
+            {% if not STORE_USER %}
             <li>
               <a class="dropdown-item d-flex gap-2 align-items-start py-2
                         {% if not CURRENT_MODULE %}active{% endif %}"
@@ -64,6 +67,7 @@
               </a>
             </li>
             <li><hr class="dropdown-divider"></li>
+            {% endif %}
             {% for m in SHOP_MODULES %}
             <li>
               <a class="dropdown-item d-flex gap-2 align-items-start py-2

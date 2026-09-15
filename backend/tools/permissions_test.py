@@ -185,5 +185,57 @@ eq("and cleared again",
    client.patch("/api/users/%d" % floor["id"], headers=head_su,
                 json={"full_name": ""}).json()["full_name"], "")
 
+head("Store access: Admin (the whole Store) or User (billing and reports)")
+eq("nothing recorded is the whole Store", P.store_access({}), "admin")
+eq("user is kept", P.normalise({"store": "user"}), {"store": "user"})
+eq("admin is what nothing means, so it is not stored",
+   P.normalise({"store": "admin"}), {})
+eq("junk is dropped rather than stored", P.normalise({"store": "cashier"}), {})
+eq("the catalog offers both levels",
+   [s["key"] for s in client.get("/api/users/catalog", headers=head_su)
+    .json()["store_access"]], ["admin", "user"])
+
+r = client.put("/api/users/%d/permissions" % floor["id"], headers=head_su,
+               json={"store": "user"})
+eq("a Store user saves", r.status_code, 200)
+eq("and reads back on its own — no screens restricted with it",
+   r.json()["permissions"], {"store": "user"})
+eq("a misspelt level is refused, not saved as the whole Store",
+   client.put("/api/users/%d/permissions" % floor["id"], headers=head_su,
+              json={"store": "cashier"}).status_code, 400)
+u_tok = login("user", "user@123")
+eq("signing in carries it, so the menu can narrow",
+   u_tok.get("permissions"), {"store": "user"})
+eq("and it narrows nothing in the warehouse",
+   client.get("/api/inventory/products",
+              headers={"Authorization": "Bearer " + u_tok["token"]}).status_code, 200)
+
+head("the /pos mount tells the shop — and only the mount can")
+from backend.app.main import _with_store_access                  # noqa: E402
+
+
+def shop_sees(path="/pos/pos/", token=None, extra=()):
+    """The headers the shop would receive for a frame request."""
+    h = [(b"host", b"essa")] + list(extra)
+    if token:
+        h.append((b"cookie", ("essa_token=%s" % token).encode()))
+    out = _with_store_access({"type": "http", "method": "GET", "path": path,
+                              "headers": h, "query_string": b""})
+    return dict(out["headers"]).get(P.STORE_HEADER.encode())
+
+
+eq("a Store user's cookie becomes the header", shop_sees(token=u_tok["token"]), b"user")
+eq("a copy sent by the client is stripped, with no session",
+   shop_sees(extra=[(b"x-essa-store-access", b"admin")]), None)
+eq("…and replaced, with one",
+   shop_sees(token=u_tok["token"], extra=[(b"x-essa-store-access", b"admin")]), b"user")
+eq("the super admin is the whole Store", shop_sees(token=su["token"]), None)
+eq("no Essa session adds nothing — the shop's own login decides", shop_sees(), None)
+eq("static files are not looked up", shop_sees("/pos/static/css/app.css",
+                                                token=u_tok["token"]), None)
+client.put("/api/users/%d/permissions" % floor["id"], headers=head_su, json={})
+eq("back to Admin, the header goes on the very next request",
+   shop_sees(token=u_tok["token"]), None)
+
 print("\n%d FAILED" % len(bad) if bad else "\nall passing")
 sys.exit(1 if bad else 0)

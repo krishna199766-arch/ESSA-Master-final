@@ -1,7 +1,7 @@
 import os
 
 import datetime as dt
-from flask import Flask, g, request
+from flask import Flask, g, jsonify, redirect, render_template, request, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from sqlalchemy import MetaData
@@ -243,6 +243,27 @@ def create_app(config_class=Config):
         raw = (request.args.get("wh") or "").strip()
         session[places_mod.SCOPE_KEY] = int(raw) if raw.isdigit() else None
 
+    @app.before_request
+    def _store_access_gate():
+        """A Store user reaches the Billing Counter and Reports, and nothing else.
+
+        After the warehouse-scope capture on purpose: the frame's first load
+        carries `?wh=`, and a redirect from here must not lose it.
+
+        The dashboard is where signing in lands, so it forwards to the counter
+        rather than refusing — a Store user's first screen after the login form
+        should be the one they came to use, not a refusal.
+        """
+        if not modules.store_user(request) or modules.store_user_allows(request.endpoint):
+            return None
+        if request.endpoint == "main.dashboard":
+            return redirect(url_for("pos.counter"))
+        msg = ("Your Store access is Billing Counter and Reports only. "
+               "Ask a super admin to change it in Users & Access.")
+        if "/api/" in request.path or request.is_json:
+            return jsonify({"ok": False, "error": msg}), 403
+        return render_template("store_access.html", message=msg), 403
+
     # Context processor for shop info
     @app.context_processor
     def inject_shop():
@@ -254,8 +275,10 @@ def create_app(config_class=Config):
         # `modules` is the one bound above, in create_app: importing it here would
         # run at request time, when the name `app` belongs to the backend.
         from flask_login import current_user
+        store_user = modules.store_user(request)
         return {
-            "SHOP_MODULES": modules.visible(current_user),
+            "SHOP_MODULES": modules.visible(current_user, restricted=store_user),
+            "STORE_USER": store_user,
             "CURRENT_MODULE": modules.current(request.endpoint),
             "SHOP_NAME": app.config["SHOP_NAME"],
             "SHOP_ADDRESS": app.config["SHOP_ADDRESS"],

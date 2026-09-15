@@ -90,6 +90,26 @@ DATA_PERMISSIONS = [
 ]
 DATA_KEYS = [k for k, _, _ in DATA_PERMISSIONS]
 
+#: How much of the STORE (the shop mounted at /pos) this account may open. Two
+#: levels, because the question at a shop is simpler than at a warehouse: the
+#: person at the till either runs the store or bills in it.
+#:
+#: `admin` is what nothing recorded means — every Store screen, exactly as before
+#: this existed — so it is never stored; only `user` is. The shop's own sign-in is
+#: still underneath it and still the ceiling: this can hide and refuse screens,
+#: never open one the shop login could not.
+STORE_ACCESS = [
+    ("admin", "Admin", "every Store screen"),
+    ("user", "User", "Billing Counter and Store Reports only"),
+]
+STORE_KEYS = [k for k, _, _ in STORE_ACCESS]
+
+#: The request header the /pos mount hands the shop when an account is a Store
+#: user. It can only ever NARROW what the shop allows, so a copy sent by a client
+#: to a standalone shop costs that client access and gains it nothing — and the
+#: mount strips any incoming copy before setting its own regardless.
+STORE_HEADER = "x-essa-store-access"
+
 
 def normalise(raw):
     """A stored permission blob, cleaned of anything this app does not know.
@@ -127,7 +147,16 @@ def normalise(raw):
         out["data"] = data
     if warehouses:
         out["warehouses"] = warehouses
+    # Only the narrowed level is kept — see STORE_ACCESS. Anything else,
+    # "admin" included, is the default and is left out.
+    if raw.get("store") == "user":
+        out["store"] = "user"
     return out
+
+
+def store_access(perms):
+    """`admin` (every Store screen) or `user` (Billing Counter and Reports)."""
+    return "user" if (perms or {}).get("store") == "user" else "admin"
 
 
 def allotted(perms):
@@ -213,4 +242,6 @@ def catalog():
                     for k, l, g, m in SCREENS],
         "data_permissions": [{"key": k, "label": l, "why": w}
                              for k, l, w in DATA_PERMISSIONS],
+        "store_access": [{"key": k, "label": l, "why": w}
+                         for k, l, w in STORE_ACCESS],
     }

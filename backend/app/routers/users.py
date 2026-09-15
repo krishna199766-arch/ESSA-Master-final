@@ -53,6 +53,9 @@ class PermissionsIn(BaseModel):
     #: Which warehouses this account may work inside. Ids, and an EMPTY list
     #: means every warehouse — see services/permissions.allotted.
     warehouses: list[int] | None = None
+    #: How much of the Store: "admin" (every screen, the default) or "user"
+    #: (Billing Counter and Store Reports) — see services/permissions.STORE_ACCESS.
+    store: str | None = None
 
 
 def _me(request: Request) -> dict:
@@ -121,6 +124,11 @@ def set_permissions(uid: int, body: PermissionsIn, request: Request,
     """
     user = _get(db, uid)
     _guard_self(request, user)
+    # A misspelt level is refused rather than dropped: dropped, it would save as
+    # the default — every Store screen — which is the opposite of narrowing.
+    if body.store not in (None, "", *perms_svc.STORE_KEYS):
+        raise HTTPException(400, "Store access must be one of "
+                                 f"{', '.join(perms_svc.STORE_KEYS)}")
     clean = perms_svc.normalise(body.model_dump())
     # An id that names no warehouse is dropped — but if the caller named some and
     # NONE of them survive, that is refused rather than saved. Silently emptying

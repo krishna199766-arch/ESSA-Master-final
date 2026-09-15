@@ -70,10 +70,52 @@ MODULES = [
 ]
 
 
-def visible(user):
+
+# ---------- Store access: Admin, or User (billing and reports) ----------
+#
+# Set per account in the Essa warehouse's Users & Access, and handed to this shop
+# on each request by the /pos mount as a header (backend/app/main.py). It can only
+# NARROW: a request without it is governed by this shop's own login exactly as
+# before, and one with it still needs that login to allow a screen — Reports
+# stays a manager's screen here. That is also why trusting a header is safe: a
+# client that sends one itself has only taken access away from itself.
+STORE_HEADER = "X-Essa-Store-Access"
+
+#: The two modules a Store user sees.
+STORE_USER_MODULES = ("counter", "reports")
+
+#: …and what billing needs that belongs to no menu entry of its own: signing in
+#: and out, choosing the till, the counter's own lookups, the customer search it
+#: borrows from Floor Sales, and the bill it opens to print once it is paid. The
+#: customer's feedback page is public and reached from the bill's QR.
+STORE_USER_ALSO = ("auth.", "static", "feedback.", "pos.place", "pos.api_",
+                   "pos.view_invoice", "pos.print_invoice",
+                   "floor.customer_lookup", "floor.customer_new")
+
+
+def store_user(req):
+    """Whether this request comes from an account narrowed to billing and reports."""
+    try:
+        return (req.headers.get(STORE_HEADER) or "").strip().lower() == "user"
+    except (AttributeError, RuntimeError):     # no request — a startup task
+        return False
+
+
+def store_user_allows(endpoint):
+    """May a Store user reach this endpoint?"""
+    if not endpoint:
+        return True                            # nothing matched; the 404 answers
+    m = current(endpoint)
+    if m is not None and m["key"] in STORE_USER_MODULES:
+        return True
+    return any(endpoint == c or endpoint.startswith(c) for c in STORE_USER_ALSO)
+
+
+def visible(user, restricted=False):
     """The modules this person may open."""
     is_manager = bool(getattr(user, "is_manager", False))
-    return [m for m in MODULES if is_manager or not m["manager"]]
+    return [m for m in MODULES if (is_manager or not m["manager"])
+            and (not restricted or m["key"] in STORE_USER_MODULES)]
 
 
 def current(endpoint):

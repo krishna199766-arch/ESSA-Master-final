@@ -666,6 +666,54 @@ def _pos_unavailable_html(rest: str = "") -> str:
             "<p>Then restart the server.</p></body>")
 
 
+def _with_store_access(scope):
+    """Tell the shop when the Essa account behind this request is a Store user.
+
+    Users & Access can narrow an account's Store to the Billing Counter and Store
+    Reports (services/permissions.STORE_ACCESS). Hiding the other screens in our
+    menu is not enough: the frame has its own navigation, and a URL typed into
+    it would open anything. So the shop has to know, and it can only know
+    through the request — it has its own login and no idea who is signed in here.
+
+    The account comes off the `essa_token` cookie, which is set at path=/ and so
+    rides along on every /pos request from inside the frame. Any copy of the
+    header a client sent is stripped first, whatever happens next. No Essa
+    session — the shop opened on its own, a phone at /pos/floor — adds nothing,
+    and the shop's own login decides exactly as it did before.
+
+    Never raises: a database hiccup here must not take the till down with it.
+    It fails NARROW instead — an account that could not be looked up gets the
+    Store user's two screens, so billing carries on and nothing else opens.
+    """
+    from .security import token_from
+    from .services import permissions as perms_svc
+    from .services.users import resolve_token
+    from starlette.requests import Request as _Request
+
+    name = perms_svc.STORE_HEADER.encode()
+    headers = [(k, v) for k, v in scope.get("headers", []) if k.lower() != name]
+    if "/static/" in scope.get("path", ""):
+        return dict(scope, headers=headers)            # css, icons: nothing to gate
+    # A throwaway copy for reading the cookie: Starlette's Request replaces the
+    # scope's header list with one of its own, so a list appended to afterwards
+    # would not be the one the shop receives.
+    token = token_from(_Request(dict(scope, headers=list(headers))))
+    narrow = False
+    if token:
+        try:
+            from .database import SessionLocal
+            db = SessionLocal()
+            try:
+                user = resolve_token(db, token)
+                narrow = user is not None and perms_svc.store_access(
+                    perms_svc.normalise(user.permissions)) == "user"
+            finally:
+                db.close()
+        except Exception:                              # noqa: BLE001
+            narrow = True
+    return dict(scope, headers=headers + ([(name, b"user")] if narrow else []))
+
+
 class _PosMount:
     """An ASGI app that is the shop once the shop has been loaded.
 
@@ -678,6 +726,8 @@ class _PosMount:
     async def __call__(self, scope, receive, send):
         pos = _pos_asgi()
         if pos is not None:
+            if scope.get("type") == "http":
+                scope = _with_store_access(scope)
             return await pos(scope, receive, send)
         from starlette.responses import HTMLResponse
         await HTMLResponse(_pos_unavailable_html(""), status_code=503)(scope, receive, send)

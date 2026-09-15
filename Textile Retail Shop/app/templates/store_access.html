@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{# Shown when a Store user — narrowed in the warehouse's Users & Access — asks for
+   a screen outside billing and reports. Says what they CAN open, with a way
+   straight to each, rather than a bare 403. See app/modules.py. #}
+{% block content %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-shield-lock"></i></div>
+    <div class="empty-title">This screen is not part of your Store access</div>
+    <div class="empty-desc">{{ message }}</div>
+    <div class="d-flex gap-2 justify-content-center mt-3">
+      <a class="btn btn-brand btn-sm" href="{{ url_for('pos.counter') }}">
+        <i class="bi bi-cart-check"></i> Billing Counter</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('reports.index') }}">
+        <i class="bi bi-graph-up"></i> Reports</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
