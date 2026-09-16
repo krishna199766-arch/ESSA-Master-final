@@ -133,8 +133,9 @@ REQUIRE_PO_FOR_LR = _env("ESSA_REQUIRE_PO_FOR_LR", "1").lower() not in (
 
 # --- Login ---
 # Accounts live in the database (see models.User and services/users), not here.
-# Three ranked roles: user (the floor), admin (setup + money), superadmin (also
-# accounts and server settings).
+# Four ranked roles: user (the floor), admin (setup + money), superadmin (also
+# accounts and server settings), superboss (all of it, and the only rank that
+# can manage a Super Boss).
 #
 # What is left here is the signing key and the accounts used to SEED an empty
 # database — a fresh install, or an existing one upgrading from the two
@@ -155,6 +156,18 @@ SEED_ACCOUNTS = {
         "password": _env("ESSA_USER_PASSWORD", "user@123"),
         "role": "user", "full_name": "Warehouse User"},
 }
+
+# The Super Boss has NO default password, deliberately — see services/users.seed.
+# Set both to create one on start; leave them unset and a super admin appoints the
+# first Super Boss from Users & Access instead.
+SUPERBOSS_SEED = ((os.environ.get("ESSA_SUPERBOSS_USER") or "").strip() or "superboss",
+                  (os.environ.get("ESSA_SUPERBOSS_PASSWORD") or "").strip())
+
+# What "today" means on the Command Center: the business's own day, not UTC's.
+# Every timestamp in both databases is stored in UTC, and a shop in Tiruppur that
+# opens at 9 would otherwise have its first three and a half hours of takings
+# filed under the previous day. Minutes east of UTC; India is +330 and has no DST.
+BUSINESS_UTC_OFFSET_MINUTES = int(_env("ESSA_UTC_OFFSET_MINUTES", "330") or 330)
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 # On a fresh disk this is the directory the database is about to be created in,

@@ -2238,3 +2238,89 @@ table.items tbody tr.sel { background: var(--brand-100); }
   border-top: 1px solid var(--line); margin-top: var(--sp-3); }
 .psareason { margin: 0; flex: 1 1 340px; max-width: 560px; }
 .psareason input { width: 100%; }
+
+/* ==========================================================================
+   Command Center — the owner's screen
+   --------------------------------------------------------------------------
+   Two things here are not like the rest of the app, and both are deliberate.
+
+   THE ASK BAR IS THE BIGGEST THING ON THE PAGE. Every other screen leads with
+   its figures; this one leads with a box, because the point of the screen is
+   that a question is faster than finding the right tile.
+
+   THE ANSWER IS A SENTENCE, IN READING SIZE. The headline figure sits beside
+   it rather than above it: the sentence carries the meaning ("across 4
+   warehouses"), the figure is what gets read out and remembered.
+   ========================================================================== */
+.cc-ask { margin-bottom: var(--sp-4); }
+.cc-ask.big .askbar { padding: var(--sp-2); background: var(--brand-50);
+  border: 1px solid var(--brand-200); border-radius: var(--radius-lg); }
+.cc-ask.big .askbar input { font-size: var(--fs-md); padding: 9px 12px; }
+
+/* Example questions, and the choices when one code names two records. */
+.cc-examples { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.cc-chip { font-size: var(--fs-sm); color: var(--text-2); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; cursor: pointer;
+  transition: border-color .12s, color .12s; }
+.cc-chip:hover { border-color: var(--brand); color: var(--brand); }
+
+.cc-answer { margin-top: var(--sp-3); background: var(--panel);
+  border: 1px solid var(--brand-200); border-left: 3px solid var(--brand-500);
+  border-radius: var(--radius); padding: var(--sp-3) var(--sp-4); box-shadow: var(--shadow-1); }
+.cc-answer.miss { border-color: var(--warn-line); border-left-color: var(--warn); }
+.cc-answerhead { display: flex; align-items: flex-start; gap: var(--sp-3); }
+.cc-title { color: var(--text-2); text-transform: uppercase; letter-spacing: .05em;
+  font-size: var(--fs-xs); font-weight: 600; }
+.cc-line { font-size: var(--fs-md); line-height: 1.55; color: var(--text); margin-top: 2px;
+  max-width: 70ch; }
+.cc-headline { font-family: var(--mono); font-size: var(--fs-2xl); font-weight: 700;
+  color: var(--brand); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cc-facts { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); margin-top: var(--sp-2);
+  padding-top: var(--sp-2); border-top: 1px solid var(--line); }
+.cc-fact { font-size: var(--fs-sm); color: var(--text-2); }
+.cc-fact b { font-family: var(--mono); color: var(--text); margin-right: 4px; }
+.cc-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
+  margin-top: var(--sp-3); }
+.cc-read { color: var(--text-2); }
+
+/* ---------- the trace: one vertical line, one card per stage ---------- */
+.cc-chain { list-style: none; margin: var(--sp-3) 0 0; padding: 0 0 0 var(--sp-4);
+  position: relative; }
+.cc-chain::before { content: ''; position: absolute; left: 5px; top: 6px; bottom: 6px;
+  width: 2px; background: var(--line); }
+.cc-step { position: relative; padding: 0 0 var(--sp-3) var(--sp-3); }
+.cc-step:last-child { padding-bottom: 0; }
+.cc-dot { position: absolute; left: -14px; top: 4px; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--brand-500); border: 2px solid var(--panel);
+  box-shadow: 0 0 0 1px var(--brand-300); }
+.cc-step.s-pending .cc-dot { background: var(--warn); box-shadow: 0 0 0 1px var(--warn-line); }
+.cc-step.s-warn .cc-dot { background: var(--warn); box-shadow: 0 0 0 1px var(--warn-line); }
+.cc-step.s-none .cc-dot { background: var(--line-strong); box-shadow: 0 0 0 1px var(--line); }
+.cc-stage { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--brand-500); font-weight: 700; }
+.cc-steptitle { font-size: var(--fs-base); color: var(--text); font-weight: 600; }
+.cc-stepdetail { color: var(--text-2); }
+.cc-stepmeta { display: flex; flex-wrap: wrap; gap: var(--sp-3); color: var(--text-2);
+  margin-top: 2px; }
+.cc-stepmeta .mono { font-family: var(--mono); }
+
+/* ---------- the panels ---------- */
+.cc-two { display: grid; gap: var(--sp-4); grid-template-columns: 1fr; }
+@media (min-width: 1100px) { .cc-two { grid-template-columns: 1fr 1fr; } }
+.dgrid.small-tiles { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+.cc-alert { padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm);
+  border: 1px solid var(--line); background: var(--panel-2); margin-bottom: var(--sp-2); }
+.cc-alert:last-child { margin-bottom: 0; }
+.cc-alert.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+.cc-alert.critical { background: var(--err-bg, #FEF2F2); border-color: #FECACA; }
+.cc-alert:hover { border-color: var(--brand-300); }
+.cc-alerttitle { font-weight: 600; color: var(--text); font-size: var(--fs-base); }
+
+/* A row that did not happen, or was not allowed to — on the trail and in the
+   activity stream. Tinted rather than red-texted: the sentence already says it. */
+table.items tr.warnrow td { background: var(--warn-bg); }
+
+/* The fourth role. Same weight as the super admin's badge, in the accent rather
+   than the chrome, so the two read as a pair with the top one brighter. */
+.badge.role-superboss { background: var(--brand-500); color: #fff; border-color: var(--brand-500); }

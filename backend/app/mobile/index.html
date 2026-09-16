@@ -236,8 +236,8 @@ const money = (v)=> v==null?'—': Number(v).toLocaleString('en-IN',{minimumFrac
 
 // Ranked, matching backend/app/services/users.py. Compared by rank rather than
 // by equality so an admin is never refused a floor screen for not being a user.
-const ROLE_RANK = { user:1, admin:2, superadmin:3 };
-const ROLE_LABEL = { user:'User', admin:'Admin', superadmin:'Super Admin' };
+const ROLE_RANK = { user:1, admin:2, superadmin:3, superboss:4 };
+const ROLE_LABEL = { user:'User', admin:'Admin', superadmin:'Super Admin', superboss:'Super Boss' };
 const atLeast = (need) => (ROLE_RANK[S.role]||0) >= (ROLE_RANK[need]||0);
 
 // Every call goes through here, and every call carries the token. The server

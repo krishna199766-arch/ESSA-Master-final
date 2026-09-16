@@ -14,8 +14,10 @@ The split, per module:
     user        LR, invoice entry, GRN, inventory, bundles, outward/inward,
                 label printing, notifications, voice, dashboard
     admin       the above plus masters, suppliers, label design, reports,
-                payments, returns, dead stock
-    superadmin  the above plus accounts and server settings
+                payments, returns, dead stock, asking questions, the audit trail
+    superadmin  the above plus accounts, server settings and the Command Center
+    superboss   everything a super admin has — the difference is in who may
+                manage whom (services/users.may_manage), not in a path here
 
 Reads and writes are ranked separately because the two do not follow each
 other. Masters are an admin screen, but the floor cannot record a receipt
@@ -30,6 +32,7 @@ from fastapi.responses import JSONResponse
 
 from . import models
 from .database import SessionLocal
+from .services import audit
 from .services import permissions
 from .services import scope
 from .services.users import ROLE_RANK, resolve_token
@@ -68,6 +71,19 @@ POLICY = [
     # --- accounts and the server's own configuration ---
     (r"^/api/users", "superadmin", "superadmin", "users"),
     (r"^/api/settings", "superadmin", "superadmin", "users"),
+
+    # --- the company's control center ---
+    # Asking a question and tracing a document are an admin's tools as much as the
+    # owner's: the answer is scoped to whatever buildings the account is allotted
+    # (services/ask_anything), so nothing here reaches past what the account's own
+    # screens already show. The Command Center dashboard itself — every warehouse,
+    # every store, every user's activity on one screen — is the super admin's and
+    # the Super Boss's.
+    (r"^/api/command/(ask|trace|examples)", "admin", "admin", "ask"),
+    (r"^/api/command", "superadmin", "superadmin", "command"),
+    # Who did what. Admin may read it — confined to their own warehouses, and
+    # without the account-management lines (routers/audit).
+    (r"^/api/audit", "admin", "admin", "audit"),
 
     # --- setup the floor reads and only admin edits ---
     (r"^/api/masters", "user", "admin", "masters"),
@@ -166,6 +182,9 @@ METHOD_ACTION = {"GET": "view", "HEAD": "view", "OPTIONS": "view",
 #: reading a cost on screen and walking out with it are different acts.
 PRINT_RE = re.compile(r"(/print|/label|/qr\.(svg|png)|/barcode|\.csv$|[?&]format=csv)")
 
+#: POSTs that only read — see required_access.
+READ_POSTS_RE = re.compile(r"^/api/command/ask$")
+
 # Reachable without a token. /api/auth is how you get one; /api/status is what
 # the login screen probes before anyone has one; the mobile PWA shell and the
 # built desktop bundle are static files whose own first call is the login.
@@ -198,6 +217,11 @@ def required_access(method: str, path: str):
     action = METHOD_ACTION.get(up, "modify")
     if action == "view" and PRINT_RE.search(path):
         action = "print"
+    # A question is sent as a POST because it is a body, not because it changes
+    # anything — an account granted only View on Ask Anything must still be able
+    # to ask.
+    if up == "POST" and READ_POSTS_RE.match(path):
+        action = "view"
     for rx, read_role, write_role, screen in POLICY_RE:
         if rx.match(path):
             return (read_role if up in READ_METHODS else write_role), screen, action
@@ -241,12 +265,29 @@ async def auth_middleware(request: Request, call_next):
     if need is None or is_public(path):
         return await call_next(request)
 
+    method = request.method.upper()
+    # Whether this request goes on the audit trail: a change, and one that is an
+    # act rather than a question or a preview. See services/audit.
+    watch = method in audit.WRITE_METHODS and not audit.skipped(path)
+    who = None
+    before = None
+
+    def refused(db, why):
+        if watch and who:
+            audit.record(db, user=who, method=method, path=path, screen=screen,
+                         action=action, outcome="refused", status=403,
+                         warehouse_id=scope.from_request(request),
+                         summary=f"was refused: {audit.generic(screen, action, path)} — {why}")
+
     db = SessionLocal()
     try:
         user = resolve_token(db, token_from(request))
         if user is None:
             return JSONResponse({"detail": "Sign in to continue"}, status_code=401)
+        who = {"username": user.username, "role": user.role,
+               "full_name": user.full_name or ""}
         if ROLE_RANK.get(user.role, 0) < ROLE_RANK[need]:
+            refused(db, f"needs {need}")
             return JSONResponse(
                 {"detail": f"This needs {need} access — you are signed in as {user.role}."},
                 status_code=403)
@@ -257,6 +298,7 @@ async def auth_middleware(request: Request, call_next):
         if not permissions.allows(perms, screen, action):
             label = dict((k, l) for k, l, _, _ in permissions.SCREENS).get(screen, screen)
             verb = dict((k, l) for k, l, _ in permissions.ACTIONS).get(action, action)
+            refused(db, f"no {verb} access to {label}")
             return JSONResponse(
                 {"detail": f"You do not have {verb} access to {label}. "
                            "Ask a super admin to grant it in Users & Access."},
@@ -279,6 +321,7 @@ async def auth_middleware(request: Request, call_next):
             if wid and int(wid) not in mine:
                 wh = db.get(models.Warehouse, int(wid))
                 where = f"“{wh.name}”" if wh else f"warehouse #{wid}"
+                refused(db, f"not allotted {where}")
                 return JSONResponse(
                     {"detail": f"You are not allotted {where}. Ask a super admin "
                                f"to add it in Users & Access."}, status_code=403)
@@ -290,6 +333,7 @@ async def auth_middleware(request: Request, call_next):
                     request.scope["headers"] = list(request.scope["headers"]) + [
                         (scope.HEADER.encode(), str(mine[0]).encode())]
                 else:
+                    refused(db, "no warehouse was open")
                     return JSONResponse(
                         {"detail": "Open one of your warehouses first — this "
                                    "screen shows one building's work."},
@@ -302,7 +346,46 @@ async def auth_middleware(request: Request, call_next):
                               "full_name": user.full_name or "", "id": user.id,
                               "permissions": perms}
         request.state.warehouses = mine
+        # What the audit sentence will need that the route is about to destroy —
+        # a deleted GRN's number, a warehouse's name before it was renamed.
+        if watch:
+            hook, _after, m = audit.match(method, path)
+            if hook is not None:
+                try:
+                    before = hook(db, m)
+                except Exception:                  # noqa: BLE001
+                    before = None
     finally:
         db.close()
 
-    return await call_next(request)
+    response = await call_next(request)
+
+    # The change is done; write it down. Only what succeeded — a 400 for a form
+    # somebody filled in wrong is not an act — and never allowed to fail the
+    # response that has already been produced.
+    if watch and who and (response.status_code < 400 or response.status_code == 403):
+        try:
+            adb = SessionLocal()
+            try:
+                if response.status_code == 403:
+                    # Refused by the route itself rather than by the table above —
+                    # a super admin reaching for the Super Boss's password, say.
+                    audit.record(adb, user=who, method=method, path=path, screen=screen,
+                                 action=action, outcome="refused", status=403,
+                                 warehouse_id=scope.from_request(request),
+                                 summary=f"was refused: {audit.generic(screen, action, path)}")
+                else:
+                    said = audit.describe(adb, method, path, screen, action, before,
+                                          who["username"],
+                                          getattr(request.state, "audit", None))
+                    audit.record(adb, user=who, method=method, path=path, screen=screen,
+                                 action=said.get("action") or action, outcome="ok",
+                                 status=response.status_code,
+                                 warehouse_id=(said.get("warehouse_id")
+                                               or scope.from_request(request)),
+                                 summary=said.get("summary"), ref=said.get("ref"))
+            finally:
+                adb.close()
+        except Exception:                          # noqa: BLE001
+            pass
+    return response

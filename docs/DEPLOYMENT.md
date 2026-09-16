@@ -101,6 +101,8 @@ the Dockerfile's `CMD` already reads it.
 | `ESSA_SUPERADMIN_PASSWORD` | your own | Defaults to `super@123`, which is in this repo |
 | `ESSA_ADMIN_PASSWORD` | your own | Defaults to `essa@123` |
 | `ESSA_USER_PASSWORD` | your own | Defaults to `user@123` |
+| `ESSA_SUPERBOSS_USER` / `ESSA_SUPERBOSS_PASSWORD` | your own, or leave unset | Optional. The Super Boss — the rank above super admin — has **no default password on purpose**, so no deployment gets a well-known login to the account that can manage everyone else. Leave both unset and a super admin appoints the first Super Boss from Users & Access (the role is offered there only while nobody holds it). Set both to create one at startup instead |
+| `ESSA_UTC_OFFSET_MINUTES` | `330` (default, India) | What "today" means on the Command Center. Every timestamp is stored in UTC; a shop that opens at 9am would otherwise file its first hours under yesterday |
 | `ESSA_STATE_DIR` | `/data` | Already set by the Dockerfile |
 | `DATABASE_URL` | `sqlite:////data/textile_shop.db` | Already set by the Dockerfile. Named generically because the shop reads it — if the host attaches a managed Postgres it may overwrite this, pointing the shop at a database with none of its tables |
 | `ANTHROPIC_API_KEY` | your key | Optional — can also be typed into the settings screen instead |

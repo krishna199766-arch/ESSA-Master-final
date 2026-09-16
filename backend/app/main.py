@@ -15,7 +15,8 @@ from .routers import (documents, suppliers, purchases, purchase_orders,
                       inventory, outward, pricing, stock_audit, physical_audit,
                       payments, returns, reports, settings, auth, masters, lr,
                       bundles, dashboard, master_data, labels, dead_stock,
-                      notifications, voice, users, locations, catalogues)
+                      notifications, voice, users, locations, catalogues,
+                      command, audit)
 from .extraction.engine import provider_status
 from .security import auth_middleware
 from .config import COMPANY_NAME, COMPANY_GSTIN, UPLOAD_DIR
@@ -611,6 +612,8 @@ app.include_router(voice.router)
 app.include_router(locations.router)
 app.include_router(catalogues.router)
 app.include_router(users.router)
+app.include_router(command.router)
+app.include_router(audit.router)
 
 
 # ---- the retail shop (POS) at /pos ----

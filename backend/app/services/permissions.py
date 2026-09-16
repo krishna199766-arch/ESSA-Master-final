@@ -43,10 +43,18 @@ ACTION_KEYS = [a for a, _, _ in ACTIONS]
 #: under; `min` repeats the role floor from security.POLICY so the editor can say
 #: WHY a box it is showing will not take effect for this user.
 SCREENS = [
+    # The owner's screen: the whole business, every warehouse, store, till and
+    # person on one page. Super admin and above.
+    ("command",    "Command Center", "Company", "superadmin"),
+    # The one-line answer box and the end-to-end trace behind it. Admin, and
+    # answered within the account's allotted warehouses.
+    ("ask",        "Ask Anything & Track", "Company", "admin"),
+    # Who did what, when and where.
+    ("audit",      "Audit Trail", "Company", "admin"),
     # The company-wide view. Admin, because it puts every warehouse's stock
     # valuation on one screen — which is a different thing from the floor
     # dashboard beside it, and a different audience.
-    ("central",    "Central Dashboard", "Warehouse", "admin"),
+    ("central",    "Central Dashboard", "Company", "admin"),
     ("dashboard",  "Warehouse Dashboard", "Warehouse", None),
     # The order comes first in the business chain, and the menu follows the chain:
     # order the goods, book the lorry in, read the invoice, receive against it.

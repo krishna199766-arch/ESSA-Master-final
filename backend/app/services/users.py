@@ -1,13 +1,15 @@
 """
 Accounts, passwords and sign-in tokens.
 
-Three ranked roles. Everything the app gates on is a comparison against this
+Four ranked roles. Everything the app gates on is a comparison against this
 rank, never a string equality test, so adding a tier later is one line here
 rather than a hunt through the routers:
 
     user        the floor — receive, count, scan, print, dispatch
     admin       the floor plus the setup it works against, and the money screens
     superadmin  all of it, plus this table and the server's own settings
+    superboss   all of it, plus the one thing a super admin cannot do: manage a
+                Super Boss. The owner's seat — see `may_manage` below.
 
 Passwords are stored as PBKDF2-HMAC-SHA256 with a per-user salt, using only the
 standard library — the deployment is a laptop or a small server and adding a
@@ -25,13 +27,50 @@ import secrets
 
 from sqlalchemy.orm import Session
 
-from ..config import AUTH_SECRET, SEED_ACCOUNTS
+from ..config import AUTH_SECRET, SEED_ACCOUNTS, SUPERBOSS_SEED
 from ..models import User
 from . import permissions
 
-ROLES = ("user", "admin", "superadmin")
-ROLE_RANK = {"user": 1, "admin": 2, "superadmin": 3}
-ROLE_LABEL = {"user": "User", "admin": "Admin", "superadmin": "Super Admin"}
+ROLES = ("user", "admin", "superadmin", "superboss")
+ROLE_RANK = {"user": 1, "admin": 2, "superadmin": 3, "superboss": 4}
+ROLE_LABEL = {"user": "User", "admin": "Admin", "superadmin": "Super Admin",
+              "superboss": "Super Boss"}
+
+
+def rank(role) -> int:
+    return ROLE_RANK.get(role or "", 0)
+
+
+def may_manage(actor_role, target_role) -> bool:
+    """Whether one account may change another at all — its role, its access, its
+    password, whether it can sign in.
+
+    Only an equal or higher rank may. Without this, the ladder stops at the rung
+    that can open Users & Access: a super admin could reset the Super Boss's
+    password and sign in as them, and the top of the hierarchy would be a label.
+    """
+    return rank(actor_role) >= rank(target_role)
+
+
+def has_active(db: Session, role: str) -> bool:
+    return db.query(User).filter(User.role == role,
+                                 User.active == True).first() is not None  # noqa: E712
+
+
+def grantable_roles(db: Session, actor_role) -> list:
+    """The roles this account may give someone: its own rank and below.
+
+    With one exception, which is how the first Super Boss comes to exist without
+    a default password shipped in a file: while NO active Super Boss exists, a
+    super admin may appoint one. The moment somebody holds the seat, only they
+    (or another Super Boss) can hand it out again.
+    """
+    r = rank(actor_role)
+    out = [x for x in ROLES if ROLE_RANK[x] <= r]
+    if ("superboss" not in out and r >= ROLE_RANK["superadmin"]
+            and not has_active(db, "superboss")):
+        out.append("superboss")
+    return out
 
 _PBKDF2_ROUNDS = 120_000
 
@@ -172,6 +211,18 @@ def seed(db: Session) -> None:
                 f"unset its ESSA_*_PASSWORD variable to use the default.")
         create_user(db, username, spec["password"], spec["role"],
                     full_name=spec.get("full_name", ""), created_by="system")
+
+    # The Super Boss is seeded ONLY when the environment names a password for
+    # it. The three accounts above ship defaults because an install needs a way
+    # in; the top seat does not, and a well-known password on the one account that
+    # can manage everyone else would be a door left open on every deployment that
+    # upgraded. Without the variables, a super admin appoints the first Super Boss
+    # in Users & Access (see grantable_roles).
+    boss_user, boss_password = SUPERBOSS_SEED
+    if boss_user and boss_password and boss_user not in existing \
+            and not has_active(db, "superboss"):
+        create_user(db, boss_user, boss_password, "superboss",
+                    full_name="Super Boss", created_by="system")
 
     # A database with no super admin has no way to reach user management, which
     # would make the tier unusable on any install that upgraded into it. If the

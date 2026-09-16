@@ -865,6 +865,34 @@ export const api = {
       return j }),
   reportAskExamples: () => fetch('/api/reports/ask-examples').then(J),
 
+  // ---- the Command Center ----
+  // Every tile, chart, list and alert in one call; `day` looks at another
+  // business day. `status` is kept on the errors for the same reason askReport
+  // does it: a 404 here is a server started before this module existed.
+  commandOverview: (day) => fetch('/api/command/overview' + (day ? '?day=' + day : ''))
+    .then(async r => { const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw Object.assign(new Error('command'), { status: r.status, detail: j.detail })
+      return j }),
+  // One question, one line back. Also how a code is tracked: a GRN, bill or QR
+  // typed into the same box is traced rather than read.
+  commandAsk: (q) => fetch('/api/command/ask', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q }) })
+    .then(async r => { const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw Object.assign(new Error('ask'), { status: r.status, detail: j.detail })
+      return j }),
+  commandTrace: (code, kind, ref) => fetch('/api/command/trace' + qs({ code, kind, ref }))
+    .then(async r => { const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw Object.assign(new Error('trace'), { status: r.status, detail: j.detail })
+      return j }),
+  commandExamples: () => fetch('/api/command/examples').then(J),
+  // Who did what, when and where. The filters the screen offers ride along with
+  // the rows, so it cannot offer a module nothing was ever recorded under.
+  auditEvents: (filters) => fetch('/api/audit' + qs(filters))
+    .then(async r => { const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw Object.assign(new Error('audit'), { status: r.status, detail: j.detail })
+      return j }),
+
   // settings / vision
   getSettings: () => fetch('/api/settings').then(J),
   setVisionKey: (api_key, model) => fetch('/api/settings/vision', {

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import User
-from ..services import permissions, users as users_svc
+from ..services import audit as audit_svc, permissions, users as users_svc
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -38,8 +38,12 @@ def _session(user: User, token: str) -> dict:
     return {"ok": True, "token": token, "user": user.username,
             "role": user.role, "role_label": users_svc.ROLE_LABEL.get(user.role, user.role),
             "full_name": user.full_name or "",
-            "can": {"manage_users": user.role == "superadmin",
-                    "admin": users_svc.ROLE_RANK.get(user.role, 0) >= 2},
+            # By rank, never by name: `role == "superadmin"` read False for the
+            # Super Boss, who can do everything a super admin can.
+            "can": {"manage_users": users_svc.rank(user.role) >= users_svc.ROLE_RANK["superadmin"],
+                    "admin": users_svc.rank(user.role) >= users_svc.ROLE_RANK["admin"],
+                    "command": users_svc.rank(user.role) >= users_svc.ROLE_RANK["superadmin"],
+                    "boss": users_svc.rank(user.role) >= users_svc.ROLE_RANK["superboss"]},
             # What this account may do screen by screen, so the menu can show the
             # screens it has rather than the screens its role has. The server
             # refuses either way — this is what stops the floor being offered
@@ -53,13 +57,30 @@ def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
     # One message for both "no such user" and "wrong password", so the form
     # cannot be used to find out which usernames exist.
     if not user or not users_svc.verify_password(body.password, user.password_hash):
+        # On the trail all the same: a run of these against one name is the
+        # exception the Command Center exists to show. The name is recorded as
+        # typed; the password never is.
+        audit_svc.record(db, username=(body.username or "").strip()[:64] or "?",
+                         role=user.role if user else None,
+                         full_name=user.full_name if user else None,
+                         method="POST", path="/api/auth/login", screen="session",
+                         action="signin", outcome="failed", status=401,
+                         summary="failed to sign in — wrong username or password")
         raise HTTPException(401, "Invalid username or password")
     if not user.active:
+        audit_svc.record(db, username=user.username, full_name=user.full_name,
+                         role=user.role, method="POST", path="/api/auth/login",
+                         screen="session", action="signin", outcome="refused",
+                         status=403, summary="tried to sign in to a deactivated account")
         raise HTTPException(403, "This account has been deactivated")
 
     token = users_svc.mint_token(user)
     user.last_login_at = dt.datetime.utcnow()
     db.commit()
+    audit_svc.record(db, username=user.username, full_name=user.full_name,
+                     role=user.role, method="POST", path="/api/auth/login",
+                     screen="session", action="signin", outcome="ok", status=200,
+                     summary="signed in")
     response.set_cookie("essa_token", token, max_age=COOKIE_MAX_AGE,
                         samesite="lax", path="/")
     return _session(user, token)
@@ -111,6 +132,10 @@ def change_password(body: ChangePasswordIn, request: Request, response: Response
     if problem:
         raise HTTPException(400, problem)
     users_svc.set_password(db, user, body.new_password)
+    audit_svc.record(db, username=user.username, full_name=user.full_name,
+                     role=user.role, method="POST", path="/api/auth/change-password",
+                     screen="session", action="password", outcome="ok", status=200,
+                     summary="changed their own password")
     # The seed rotated, so the token that authorised this call is now dead —
     # hand back a fresh one rather than bouncing them to the login screen.
     token = users_svc.mint_token(user)

@@ -480,7 +480,7 @@ function Field({ label, value, onChange, flagged, note, wide, source, date, calc
     <div className={'field' + (flagged ? ' flag' : '') + (source && !flagged ? ' fromlr' : '')
       + (calc ? ' calc' : '')}
       style={wide ? { gridColumn: '1 / -1' } : null}>
-      <label title={calc || undefined}>{label}{calc ? ' ƒ' : ''}</label>
+      <label title={calc || undefined}>{label}{calc ? ' Æ’' : ''}</label>
       {date
         ? <DateField inline value={value} onChange={onChange} />
         : <input value={value ?? ''} title={calc || undefined}
@@ -1075,7 +1075,7 @@ function LineItems({ items, setItems }) {
   //
   // The invoice still has to reconcile against the paper it was read off, so the
   // line TOTALS are shared out rather than copied: six lines each carrying the
-  // whole amount would multiply the bill by six. Σ qty and Σ value come out of
+  // whole amount would multiply the bill by six. Î£ qty and Î£ value come out of
   // this exactly as they went in, which is what makes it safe to do on a
   // document that has already been checked against its image.
   // One line, spread across a list of {size, qty} — the list the operator has in
@@ -1166,7 +1166,7 @@ function LineItems({ items, setItems }) {
       + `Each line's OWN quantity is spread evenly across them, so a count you set `
       + `by hand above applies to line ${i + 1} only.\n`
       + `${targets.size} line(s) become ${targets.size * sizes.length}. `
-      + 'Σ qty and Σ value do not move.')) return
+      + 'Î£ qty and Î£ value do not move.')) return
     setItems(items.flatMap((x, j) => (targets.has(j) ? expandRows(x, evenRows(x, sizes)) : [x])))
     closeRun()
   }
@@ -1289,7 +1289,7 @@ function LineItems({ items, setItems }) {
         <thead><tr><th style={{ minWidth: 34 }} title="Line number on the invoice">#</th>
           {ITEM_COLS.map(([k, l, , w, tip]) =>
           <th key={k} style={{ minWidth: w }} title={tip}
-            className={ITEM_CALC.has(k) ? 'calc' : undefined}>{l}{tip ? ' ƒ' : ''}</th>)}<th></th></tr>
+            className={ITEM_CALC.has(k) ? 'calc' : undefined}>{l}{tip ? ' Æ’' : ''}</th>)}<th></th></tr>
           {/* Under the headings, not in a toolbar above the table: the control
               belongs to the column it fills, and aligned under it there is
               nothing to explain about which is which. */}
@@ -1502,10 +1502,10 @@ function LineItems({ items, setItems }) {
       ))}
       <div className="items-foot">
         <span>{items.length} lines</span>
-        <span>Σ qty <b>{qtySum.toLocaleString('en-IN')}</b></span>
+        <span>Î£ qty <b>{qtySum.toLocaleString('en-IN')}</b></span>
         {discSum > 0 && <span title="Σ ((MRP − Rate) × Qty) — the whole invoice's gap between printed price and cost">
           Σ MRP − cost <b>{money(discSum)}</b></span>}
-        <span>Σ value <b>{money(amtSum)}</b></span>
+        <span>Î£ value <b>{money(amtSum)}</b></span>
         {/* A twenty-four-line invoice that is really six garments in four sizes
             each is six things to check, not twenty-four — but only if they can be
             put away all at once. One line at a time is not an offer anybody
@@ -2138,8 +2138,8 @@ function Review({ docId, onSaved, onCreateGrn, toast }) {
               <div>
                 <h5>Totals</h5>
                 <div className="grid">
-                  {f('totals.total_qty', 'Total Qty', { calc: 'Σ of the Qty column.' })}
-                  {f('totals.sub_total', 'Sub Total', { calc: 'Σ of the Amount column.' })}
+                  {f('totals.total_qty', 'Total Qty', { calc: 'Î£ of the Qty column.' })}
+                  {f('totals.sub_total', 'Sub Total', { calc: 'Î£ of the Amount column.' })}
                   {f('totals.taxable_total', 'Taxable Total', { calc: 'Σ of the Taxable column — what the tax rates are charged on.' })}
                   {f('totals.tax_total', 'Tax Total', { calc: 'CGST + SGST + IGST.' })}
                   {f('totals.grand_total', 'Grand Total', { calc: 'Taxable + tax + charges + freight − special discount + round off.' })}
@@ -2821,7 +2821,7 @@ function Purchases({ selId, setSelId, toast }) {
                   <th style={{ textAlign: 'right', minWidth: 78 }}
                     title="What the supplier printed as the retail price">MRP</th>
                   <th style={{ textAlign: 'right', minWidth: 88 }} className="calc"
-                    title="Off MRP. Type a sale price instead and this fills itself.">Discount % ƒ</th>
+                    title="Off MRP. Type a sale price instead and this fills itself.">Discount % Æ’</th>
                   <th style={{ textAlign: 'right', minWidth: 88 }} className="calc"
                     title="MRP less the discount — e.g. 995 − 20% = 796. Type it and the discount % follows.">Sale price ƒ</th>
                   <th>Match</th>
@@ -4480,7 +4480,7 @@ function StockOutward({ toast }) {
               </table>
               </div>
               <div className="items-foot"><span>{detail.lines.length} items</span>
-                <span>Σ qty <b>{detail.total_qty}</b></span>
+                <span>Î£ qty <b>{detail.total_qty}</b></span>
                 {detail.status === 'received' && <span>accepted <b>{detail.accepted_qty}</b></span>}
                 {detail.shortfall > 0 && <span style={{ color: 'var(--danger)' }}>short <b>{detail.shortfall}</b></span>}
               </div>
@@ -5079,7 +5079,7 @@ const SpeechRec = typeof window !== 'undefined' &&
 //: to nonsense. So this is a choice someone makes, and it is remembered.
 const VOICE_LANGS = [
   ['en-IN', 'EN', 'English — Indian English'],
-  ['ta-IN', 'தமிழ்', 'Tamil'],
+  ['ta-IN', 'à®¤à®®à®¿à®´à¯', 'Tamil'],
 ]
 
 const voiceBlockedBecause = () => {
@@ -5841,7 +5841,7 @@ function LREntryForm({ editing, opts, lists, onDone, onCancel, toast, reloadOpts
             <option value="">Type</option>
             {(opts.attachment_type || []).map((t) => <option key={t} value={t}>{t}</option>)}
           </select></div>
-        <button className="btn" onClick={() => fileRef.current?.click()}>＋ Add file</button>
+        <button className="btn" onClick={() => fileRef.current?.click()}>ï¼‹ Add file</button>
         <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={queueFile} />
       </div>
       {(atts.length > 0 || pendingFiles.length > 0) && (
@@ -6583,7 +6583,9 @@ function PriceChanger({ toast, role }) {
   const [revisions, setRevisions] = useState([])
   const [open, setOpen] = useState(null)
 
-  const mayChange = role === 'admin' || role === 'superadmin'
+  // By RANK, not by name — `role === 'superadmin'` locked the Super Boss, who
+  // outranks every one of these, out of the screen. See ROLE_RANK.
+  const mayChange = atLeast(role, 'admin')
 
   const loadRevisions = useCallback(() =>
     api.pricingRevisions().then((r) => setRevisions(r.revisions || [])).catch(() => {}), [])
@@ -8480,7 +8482,7 @@ function FieldMic({ f, master, onValue, toast }) {
   const heardRef = useRef('')
   const take = async (text, lang) => {
     if (isEnglish(lang)) { onValue(coerceSpoken(f, text)); return }
-    // Tamil: the box would otherwise end up holding "பில்லோ", and nobody finds
+    // Tamil: the box would otherwise end up holding "à®ªà®¿à®²à¯à®²à¯‹", and nobody finds
     // that product again by typing "pillow"
     heardRef.current = text
     setBusy(true)
@@ -10912,8 +10914,8 @@ function DsRegister({ toast, status, setStatus, onChanged }) {
             <Pager {...page} noun="line" />
             <div className="items-foot">
               <span>{rows.length} line(s) · Σ {data.totals.qty} pcs</span>
-              <span>Σ stock value <b>{rupees(data.totals.stock_value)}</b></span>
-              <span>Σ expected <b>{rupees(data.totals.expected_realisation)}</b></span>
+              <span>Î£ stock value <b>{rupees(data.totals.stock_value)}</b></span>
+              <span>Î£ expected <b>{rupees(data.totals.expected_realisation)}</b></span>
               <button className="btn primary" style={{ marginLeft: 'auto' }}
                 disabled={!chosen.length} onClick={() => setAdding(true)}
                 title={chosen.length ? 'Put these lines on a clearance worksheet' : 'Select some lines first'}>
@@ -11852,8 +11854,9 @@ const DASHBOARD = { key: 'dashboard', icon: '🏠', label: 'Dashboard',
 
 const ROLE_HELP = {
   user: 'The floor — LR, invoice entry, GRN, inventory, label printing, dispatch and receipt. On the phone app too.',
-  admin: 'All of the floor, plus the setup behind it — masters, suppliers, label design — and reports, payments, returns and dead stock.',
-  superadmin: 'Everything, plus this screen and the server settings (the vision key and model).',
+  admin: 'All of the floor, plus the setup behind it — masters, suppliers, label design — and reports, payments, returns, dead stock, the audit trail and asking questions.',
+  superadmin: 'Everything, plus this screen, the server settings (the vision key and model) and the Command Center.',
+  superboss: 'Everything a super admin has — and the only rank that can create, change or remove a Super Boss. The owner’s seat.',
 }
 
 // ==========================================================================
@@ -12199,7 +12202,7 @@ function Users({ toast, me }) {
 
         <div className="small" style={{ color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.7 }}>
           Everyone signs in with their own account, on the desktop app and on the phone —
-          the same account works on both. Three levels:
+          the same account works on both. Four levels, each holding everything below it:
           <div style={{ marginTop: 8 }}>{Object.keys(ROLE_HELP).map((r) => (
             <div key={r} style={{ display: 'flex', gap: 10, marginTop: 5 }}>
               <span className={'badge role-' + r} style={{ flex: '0 0 92px' }}>{ROLE_LABEL[r]}</span>
@@ -12227,10 +12230,23 @@ function Users({ toast, me }) {
                     {/* Your own row shows the role but cannot change it — the
                         account you are signed in as is the one holding the door
                         open, and the server refuses this too. */}
-                    {isMe(u) ? <span className={'badge role-' + u.role}>{u.role_label}</span> : (
+                    {/* A row this account may not change — its own, or one that
+                        outranks it — shows the role and no control. The server
+                        refuses either way; what this avoids is offering a super
+                        admin a dropdown on the Super Boss that answers 403. */}
+                    {isMe(u) || u.manageable === false ? (
+                      <span className={'badge role-' + u.role}
+                        title={isMe(u) ? ROLE_HELP[u.role]
+                          : `Only a ${u.role_label} can change a ${u.role_label} account`}>
+                        {u.role_label}</span>
+                    ) : (
                       <select className="sel" value={u.role} title={ROLE_HELP[u.role]}
                         onChange={(e) => patch(u, { role: e.target.value }, `✓ ${u.username} is now ${ROLE_LABEL[e.target.value]}`)}>
-                        {roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                        {/* the roles THIS account may hand out — the server sends
+                            only those, and adds Super Boss while the seat is empty */}
+                        {(roles.some((r) => r.value === u.role) ? roles
+                          : [{ value: u.role, label: u.role_label }, ...roles])
+                          .map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
                     )}
                     {u.permissions?.store === 'user' && (
@@ -12243,24 +12259,29 @@ function Users({ toast, me }) {
                   <td className="small">{u.last_login_at ? when(u.last_login_at) : <span title="This account has never been used">never</span>}</td>
                   <td className="small">{when(u.created_at)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn" style={{ padding: '2px 8px', marginRight: 5 }}
-                      onClick={() => rename(u)}
-                      title="Change the name shown against this account">Edit name</button>
-                    {!isMe(u) && (
+                    {u.manageable === false ? (
+                      <span className="small" style={{ color: 'var(--text-2)' }}>
+                        only a {u.role_label} can change this account</span>
+                    ) : <>
                       <button className="btn" style={{ padding: '2px 8px', marginRight: 5 }}
-                        onClick={() => setAccess(u)}
-                        title="Choose screen by screen what this account may view, create, modify, delete and print">
-                        Access{u.permissions?.screens
-                          ? ` · ${Object.keys(u.permissions.screens).length}` : ''}</button>
-                    )}
-                    <button className="btn" style={{ padding: '2px 8px', marginRight: 5 }}
-                      onClick={() => reset(u)} title="Set a new password and sign them out everywhere">Reset password</button>
-                    {!isMe(u) && <>
+                        onClick={() => rename(u)}
+                        title="Change the name shown against this account">Edit name</button>
+                      {!isMe(u) && (
+                        <button className="btn" style={{ padding: '2px 8px', marginRight: 5 }}
+                          onClick={() => setAccess(u)}
+                          title="Choose screen by screen what this account may view, create, modify, delete and print">
+                          Access{u.permissions?.screens
+                            ? ` · ${Object.keys(u.permissions.screens).length}` : ''}</button>
+                      )}
                       <button className="btn" style={{ padding: '2px 8px', marginRight: 5 }}
-                        onClick={() => patch(u, { active: !u.active }, u.active ? `${u.username} can no longer sign in` : `✓ ${u.username} can sign in again`)}
-                        title={u.active ? 'Stop this account signing in — reversible' : 'Let this account sign in again'}>
-                        {u.active ? 'Deactivate' : 'Reactivate'}</button>
-                      <button className="btn" style={{ padding: '2px 8px' }} onClick={() => remove(u)} title="Delete permanently">×</button>
+                        onClick={() => reset(u)} title="Set a new password and sign them out everywhere">Reset password</button>
+                      {!isMe(u) && <>
+                        <button className="btn" style={{ padding: '2px 8px', marginRight: 5 }}
+                          onClick={() => patch(u, { active: !u.active }, u.active ? `${u.username} can no longer sign in` : `✓ ${u.username} can sign in again`)}
+                          title={u.active ? 'Stop this account signing in — reversible' : 'Let this account sign in again'}>
+                          {u.active ? 'Deactivate' : 'Reactivate'}</button>
+                        <button className="btn" style={{ padding: '2px 8px' }} onClick={() => remove(u)} title="Delete permanently">×</button>
+                      </>}
                     </>}
                   </td>
                 </tr>
@@ -13179,6 +13200,629 @@ function ChooseWarehouse({ onEnter, user }) {
 }
 
 // ==========================================================================
+//  Ask anything — one line first, the rows behind it
+//  ------------------------------------------------------------------------
+//  The Reports screen's question box picks a register and draws the table. This
+//  one answers: a sentence with the figure in it, said the way the business says
+//  money, and THEN the detail for whoever wants it. That order is the whole
+//  point — an owner asking "what did we sell today" wants a number, not a
+//  register to read.
+//
+//  The same box tracks a code. A GRN number, a bill number or a scanned QR typed
+//  in here is followed end to end instead of being read as a question, because
+//  somebody holding a tag does not want it parsed, they want its history.
+//
+//  Spoken questions land in the same box (VoiceButton, shared with Reports), and
+//  a spoken question gets a spoken answer — `speak` comes from the server, with
+//  the figure in lakhs and crores, because "eight lakh forty-two thousand" is
+//  how it is said out loud and "842650" is not.
+// ==========================================================================
+function TraceChain({ chain }) {
+  if (!chain || !chain.length) return null
+  return (
+    <ol className="cc-chain">
+      {chain.map((s, i) => (
+        <li key={i} className={'cc-step s-' + (s.state || 'done')}>
+          <span className="cc-dot" aria-hidden="true" />
+          <div className="cc-stepbody">
+            <div className="cc-stage">{s.stage}</div>
+            <div className="cc-steptitle">{s.title}</div>
+            {s.detail && <div className="small cc-stepdetail">{s.detail}</div>}
+            <div className="cc-stepmeta small">
+              {s.when && <span>{String(s.when).replace('T', ' ')}</span>}
+              {s.ref && <span className="mono">{s.ref}</span>}
+              {s.qty != null && <span>{fmtQty(s.qty)} units</span>}
+            </div>
+          </div>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function AskAnything({ go, big, placeholder }) {
+  const [q, setQ] = useState('')
+  const [ans, setAns] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [meta, setMeta] = useState(null)
+  const [details, setDetails] = useState(false)
+  const spoken = useRef(false)
+
+  useEffect(() => { api.commandExamples().then(setMeta).catch(() => {}) }, [])
+
+  const say = (text) => {
+    // Only for a question that was ASKED by voice: reading every typed answer
+    // aloud in a shop office is a feature nobody asked for.
+    try {
+      if (!text || !window.speechSynthesis) return
+      window.speechSynthesis.cancel()
+      const u = new window.SpeechSynthesisUtterance(text)
+      u.lang = 'en-IN'
+      window.speechSynthesis.speak(u)
+    } catch { /* no voice on this browser */ }
+  }
+
+  const run = async (text) => {
+    const question = (typeof text === 'string' ? text : q).trim()
+    if (!question) return
+    setBusy(true); setDetails(false)
+    try {
+      const r = await api.commandAsk(question)
+      setAns(r)
+      if (spoken.current) say(r.speak || r.line)
+    } catch (e) {
+      const stale = e.status === 404 || e.status === 405
+      setAns({ ok: false, title: 'Could not ask',
+        line: stale
+          ? 'The server is still running the code from before this screen existed — restart it and ask again.'
+          : (e.detail || 'The question could not be sent.') })
+    }
+    spoken.current = false
+    setBusy(false)
+  }
+
+  const pick = (choice) => {
+    setBusy(true)
+    api.commandTrace(ans?.code || q, choice.kind, choice.id)
+      .then((r) => setAns(r)).catch(() => {}).finally(() => setBusy(false))
+  }
+
+  const exportCsv = () => {
+    const cols = ans?.columns || []
+    if (!cols.length) return
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const csv = [cols.map(esc).join(','),
+      ...(ans.rows || []).map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n')
+    // The BOM is what makes Excel read ₹ and Tamil names as UTF-8 rather than mojibake.
+    const url = URL.createObjectURL(new Blob(['ï»¿' + csv], { type: 'text/csv;charset=utf-8' }))
+    const el = document.createElement('a')
+    el.href = url
+    el.download = `${(ans.title || 'answer').replace(/[^\w]+/g, '_').toLowerCase()}.csv`
+    el.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const read = ans?.interpretation
+  return (
+    <div className={'cc-ask' + (big ? ' big' : '')}>
+      <div className="askbar">
+        <span className="ico" aria-hidden="true">✨</span>
+        <span className="askfield">
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder={placeholder || 'Ask anything about your business — or paste a GRN, bill or QR code'}
+            title="Type a question, speak it, or paste a code to track it end to end"
+            onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) run() }} />
+          {q && <button className="askclear" title="Clear" onClick={() => { setQ(''); setAns(null) }}>×</button>}
+        </span>
+        <VoiceButton onInterim={setQ} onSpoken={(t) => { spoken.current = true; run(t) }} disabled={busy} />
+        <button className="btn primary" disabled={busy || !q.trim()} onClick={() => run()}>
+          {busy ? 'Working…' : 'Ask'}</button>
+        {meta?.engine === 'keywords' && (
+          <span className="askengine" title="No AI key is set, so questions are matched on keywords rather than read as sentences. A super admin can set one in the top bar.">
+            keyword mode</span>
+        )}
+      </div>
+
+      {!ans && meta?.examples && (
+        <div className="cc-examples">
+          {meta.examples.slice(0, 6).map((e) => (
+            <button key={e.q} className="cc-chip" title={e.note}
+              onClick={() => { setQ(e.q); run(e.q) }}>{e.q}</button>
+          ))}
+        </div>
+      )}
+
+      {ans && (
+        <div className={'cc-answer' + (ans.ok === false ? ' miss' : '')}>
+          <div className="cc-answerhead">
+            <div>
+              <div className="cc-title small">{ans.title || 'Answer'}</div>
+              <div className="cc-line">{ans.line}</div>
+            </div>
+            <span className="spacer" />
+            {ans.headline && <div className="cc-headline">{ans.headline}</div>}
+            <button className="askclear" title="Dismiss" onClick={() => setAns(null)}>×</button>
+          </div>
+
+          {(ans.facts || []).length > 0 && (
+            <div className="cc-facts">
+              {ans.facts.map((f) => (
+                <span key={f.label} className="cc-fact"><b>{f.value}</b> {f.label}</span>
+              ))}
+            </div>
+          )}
+
+          {(ans.choices || []).length > 0 && (
+            <div className="cc-examples">
+              {ans.choices.map((c) => (
+                <button key={c.kind + c.id} className="cc-chip" onClick={() => pick(c)}>{c.label}</button>
+              ))}
+            </div>
+          )}
+
+          <TraceChain chain={ans.chain} />
+
+          {(ans.suggestions || []).length > 0 && (
+            <div className="cc-examples">
+              {ans.suggestions.map((s) => (
+                <button key={s} className="cc-chip" onClick={() => { setQ(s); run(s) }}>{s}</button>
+              ))}
+            </div>
+          )}
+
+          <div className="cc-actions">
+            {(ans.rows || []).length > 0 && (
+              <button className="btn" onClick={() => setDetails((d) => !d)}>
+                {details ? 'Hide details' : `View details · ${ans.rows.length} row(s)`}</button>
+            )}
+            {(ans.rows || []).length > 0 && (
+              <button className="btn" onClick={exportCsv} title="Download these rows as a spreadsheet">
+                Export</button>
+            )}
+            {ans.speak && (
+              <button className="btn" onClick={() => say(ans.speak)} title="Read the answer out loud">
+                🔊 Say it</button>
+            )}
+            {ans.open?.tab && go && (
+              <button className="btn" onClick={() => go(ans.open.tab)}>Open the screen</button>
+            )}
+            <span className="spacer" />
+            {read && (
+              <span className="small cc-read" title="How the question was read — check it before trusting the figure">
+                read as <b>{read.intent}</b>
+                {ans.period ? ` · ${ans.period.label}` : ''}
+                {read.engine === 'keywords' ? ' · keywords' : ''}
+              </span>
+            )}
+          </div>
+
+          {(read?.notes || []).map((n, i) => <div key={i} className="asknote warn">⚠ {n}</div>)}
+          {read?.degraded && <div className="asknote warn">⚠ {read.degraded}</div>}
+          {ans.note && <div className="asknote">{ans.note}</div>}
+
+          {details && (ans.rows || []).length > 0 && (
+            <div className="tablewrap" style={{ marginTop: 10 }}>
+              <table className="items">
+                <thead><tr>{ans.columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                <tbody>{ans.rows.slice(0, 200).map((r, i) => (
+                  <tr key={i}>{ans.columns.map((c) => (
+                    <td key={c} className={typeof r[c] === 'number' ? 'num mono' : ''}>
+                      {typeof r[c] === 'number' ? nf(r[c]) : (fmtLoose(r[c]) ?? '')}</td>
+                  ))}</tr>
+                ))}</tbody>
+              </table>
+              {ans.rows.length > 200 && (
+                <div className="small" style={{ padding: 8, color: 'var(--text-2)' }}>
+                  Showing the first 200 of {ans.rows.length} — Export gives all of them.</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==========================================================================
+//  Command Center — the whole business on one screen
+//  ------------------------------------------------------------------------
+//  The owner's screen. Everything else in this app is a way into one part of
+//  the operation; this is the operation: what sold, what came in, what is owed,
+//  what is standing still, who did what — for every warehouse, store and till at
+//  once, with one box to ask anything of it.
+//
+//  One request draws all of it (/api/command/overview), for the same reason the
+//  Central Dashboard makes one: twenty figures fetched separately is twenty
+//  round trips on a screen somebody opens first thing in the morning.
+//
+//  Every figure is the business's own day (IST, not UTC) — see
+//  services/business_day — and is scoped to whatever warehouses the account is
+//  allotted. The panel says which figures are company-wide whatever that scope.
+// ==========================================================================
+const CC_SERIES = [
+  ['sales', 'Sales', 'What the stores billed, net of returns'],
+  ['purchases', 'Purchases', 'GRNs posted — goods that became stock'],
+  ['payments', 'Payments', 'Paid to suppliers'],
+  ['returns', 'Returns', 'Customer returns and debit notes'],
+  ['movement', 'Stock movement', 'Units in and out of the warehouses'],
+]
+
+function CommandCenter({ go, toast, user, role }) {
+  const [ov, setOv] = useState(null)
+  const [day, setDay] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [view, setView] = useState('sales')
+
+  const load = useCallback(() => {
+    setBusy(true)
+    return api.commandOverview(day || undefined)
+      .then((r) => { setOv(r); setErr('') })
+      .catch((e) => setErr(e.status === 404 || e.status === 405
+        ? 'restart'
+        : (e.detail || 'The Command Center could not be read')))
+      .finally(() => setBusy(false))
+  }, [day])
+  useEffect(() => { load() }, [load])
+
+  if (err === 'restart') return (
+    <div className="screen scrolls">
+      <div className="pagehead"><h2>Command Center</h2></div>
+      <div className="screenbody"><div className="warnbox" style={{ maxWidth: 620 }}>
+        <h4>The server needs restarting</h4>
+        <div className="small" style={{ color: 'var(--text-2)', lineHeight: 1.5 }}>
+          <code>/api/command/overview</code> is registered when Python starts, and this
+          server was started before it existed. Stop it and run it again.
+        </div></div></div>
+    </div>
+  )
+
+  const k = ov?.kpis || {}
+  // ₹8.42 L, not ₹842,650.00 — a tile is read at a glance, and the full figure
+  // is in its tooltip. Named apart from the app's `money`, which is the long form.
+  const short = (v) => '₹' + compact(+v || 0)
+  const series = ov?.series
+  const chart = () => {
+    if (!series) return null
+    if (view === 'movement') {
+      return (
+        <ChartCard title="Units in and out, per day" columns={['Day', 'In', 'Out']}
+          rows={series.labels.map((l, i) => [l, fmtQty(series.inward[i]), fmtQty(series.outward[i])])}
+          legend={<Legend items={[{ label: 'Inward', color: 'var(--viz-1)' },
+            { label: 'Outward', color: 'var(--viz-2)' }]} />}>
+          <GroupedBars labels={series.labels} unit="units"
+            series={[{ name: 'Inward', values: series.inward },
+              { name: 'Outward', values: series.outward }]} />
+        </ChartCard>
+      )
+    }
+    const values = series[view] || []
+    const meta = CC_SERIES.find(([key]) => key === view)
+    return (
+      <ChartCard title={`${meta[1]} — the last fortnight`} note={meta[2]}
+        columns={['Day', meta[1]]}
+        rows={series.labels.map((l, i) => [l, short(values[i])])}>
+        <LineChart labels={series.labels} values={values} unit="₹" />
+      </ChartCard>
+    )
+  }
+
+  return (
+    <div className="screen scrolls">
+      <div className="pagehead">
+        <h2>🧭 Command Center</h2>
+        <div className="pagesub">
+          {ov ? `${ov.label} · ${ov.counts?.warehouses ?? 0} warehouse(s), ${ov.counts?.stores ?? 0} store(s), ${ov.counts?.counters ?? 0} till(s)` : 'The whole business on one screen'}
+          {ov?.scope?.restricted && ' · your allotted warehouses only'}
+        </div>
+        <input type="date" value={day} max={ov?.day} style={{ width: 150 }}
+          title="Look at another business day" onChange={(e) => setDay(e.target.value)} />
+        {day && <button className="btn" onClick={() => setDay('')}>Today</button>}
+        <button className="btn" onClick={load} disabled={busy}>{busy ? 'Reading…' : 'Refresh'}</button>
+      </div>
+
+      <div className="screenbody">
+        <AskAnything go={go} big />
+
+        {err && <div className="warnbox" style={{ marginBottom: 14 }}>
+          <h4>Some of this could not be read</h4>
+          <div className="small" style={{ color: 'var(--text-2)' }}>{err}</div></div>}
+        {!ov ? <div className="empty" style={{ marginTop: 30 }}>Reading the business…</div> : (
+          <>
+            {!ov.pos?.available && (
+              <div className="warnbox" style={{ marginBottom: 14 }}>
+                <h4>The stores' till database is not readable from here</h4>
+                <div className="small" style={{ color: 'var(--text-2)' }}>
+                  Sales, discounts, profit and store stock are blank; everything from the
+                  warehouse's own books is unaffected.</div>
+              </div>
+            )}
+
+            <div className="dgrid" style={{ marginBottom: 'var(--sp-4)' }}>
+              <DashTile label={`${ov.label}'s Sales`} value={short(k.sales?.value)} accent="money"
+                sub={`${nf(k.sales?.bills || 0)} bill(s) · ${fmtQty(k.sales?.units || 0)} units`}
+                hint={`Billed ₹${nf(k.sales?.gross || 0)} less ₹${nf(k.sales?.returns || 0)} of customer returns`}
+                onClick={() => go('central')} />
+              <DashTile label="Purchases" value={short(k.purchases?.value)} accent="stock"
+                sub={`${nf(k.purchases?.grns || 0)} GRN(s) · ${fmtQty(k.purchases?.units || 0)} units`}
+                hint="GRNs posted today — goods that actually became stock"
+                onClick={() => go('purchases')} />
+              <DashTile label="Stock Value" value={short(k.stock_value?.value)} accent="count"
+                sub={`${fmtQty(k.stock_value?.qty || 0)} units · ${nf(k.stock_value?.items || 0)} items`}
+                hint="Quantity × each warehouse's own weighted-average cost"
+                onClick={() => go('inventory')} />
+              <DashTile label="Profit" value={short(k.profit?.value)} accent="money"
+                tone={k.profit?.value > 0 ? 'ok' : ''}
+                sub={k.profit?.margin_pct != null ? `${k.profit.margin_pct}% margin` : 'no sales yet'}
+                hint="Store sales before tax, less what those goods cost at the till" />
+            </div>
+
+            <div className="dgrid small-tiles" style={{ marginBottom: 'var(--sp-4)' }}>
+              <DashTile label="Warehouses" value={nf(ov.counts?.warehouses || 0)} accent="count"
+                sub="open" onClick={() => go('locations')} />
+              <DashTile label="Stores" value={nf(ov.counts?.stores || 0)} accent="count"
+                sub="selling" onClick={() => go('locations')} />
+              <DashTile label="POS Counters" value={nf(ov.counts?.counters || 0)} accent="count"
+                sub="tills" onClick={() => go('locations')} />
+              {ov.counts?.users != null && (
+                <DashTile label="Users" value={nf(ov.counts.users)} accent="count"
+                  sub="can sign in" onClick={() => go('users')} />
+              )}
+              <DashTile label="Low Stock" value={nf(k.low_stock?.count || 0)} accent="back"
+                tone={k.low_stock?.count ? 'warn' : ''} sub="in the stores"
+                hint="Store products at or below their reorder level" />
+              <DashTile label="Returns" value={short(k.returns?.value)} accent="back"
+                sub={`${nf(k.returns?.store_notes || 0)} customer · ${nf(k.returns?.debit_notes || 0)} supplier`} />
+            </div>
+
+            <Section id="cc.flow" title="Business overview"
+              summary={CC_SERIES.find(([key]) => key === view)[1]}
+              actions={
+                <span className="segbar">
+                  {CC_SERIES.map(([key, label]) => (
+                    <button key={key} className={view === key ? 'on' : ''}
+                      onClick={(e) => { e.stopPropagation(); setView(key) }}>{label}</button>
+                  ))}
+                </span>}>
+              {chart()}
+            </Section>
+
+            <div className="vizgrid">
+              <ChartCard title="Top selling products — last 30 days"
+                columns={['Product', 'Sales']}
+                rows={(ov.top_products || []).map((r) => [r.label, short(r.amount)])}>
+                {(ov.top_products || []).length
+                  ? <HBars rows={(ov.top_products || []).map((r) => ({ label: r.label, value: r.amount }))} unit="₹" />
+                  : <div className="empty">No store sales in the last 30 days.</div>}
+              </ChartCard>
+              <ChartCard title={`Sales by floor — ${ov.label.toLowerCase()}`}
+                columns={['Floor', 'Sales']}
+                rows={(ov.top_floors || []).map((r) => [r.label, short(r.amount)])}>
+                {(ov.top_floors || []).length
+                  ? <HBars ordinal rows={(ov.top_floors || []).map((r) => ({ label: r.label, value: r.amount }))} unit="₹" />
+                  : <div className="empty">Nothing billed yet.</div>}
+              </ChartCard>
+            </div>
+
+            <Section id="cc.money" title="What needs somebody"
+              summary={`${nf(k.pending_grns?.count || 0)} GRN(s), ₹${compact(k.pending_payments?.value || 0)} owed`}>
+              <div className="dgrid small-tiles">
+                <DashTile label="Pending GRNs" value={nf(k.pending_grns?.count || 0)} accent="adjust"
+                  tone={k.pending_grns?.count ? 'warn' : ''}
+                  sub={`₹${compact(k.pending_grns?.value || 0)} · ${nf(k.pending_grns?.documents || 0)} invoice(s) to review`}
+                  onClick={() => go('purchases')} />
+                <DashTile label="Pending Payments" value={short(k.pending_payments?.value)} accent="money"
+                  tone={k.pending_payments?.overdue ? 'warn' : ''}
+                  sub={`${nf(k.pending_payments?.bills || 0)} bill(s) · ₹${compact(k.pending_payments?.overdue || 0)} over 30 days`}
+                  onClick={() => go('payments')} />
+                <DashTile label="Dead Stock" value={nf(k.dead_stock?.count || 0)} accent="back"
+                  tone={k.dead_stock?.critical ? 'warn' : ''}
+                  sub={`₹${compact(k.dead_stock?.value || 0)} · idle ${k.dead_stock?.days || 90}+ days`}
+                  onClick={() => go('deadstock')} />
+                <DashTile label="In Transit" value={fmtQty(k.movement?.in_transit || 0)} accent="move"
+                  sub={`${fmtQty(k.movement?.inward || 0)} in / ${fmtQty(k.movement?.outward || 0)} out today`}
+                  onClick={() => go('inward')} />
+                <DashTile label="Discounts" value={short(k.discounts?.value)} accent="back"
+                  sub="given at the tills today" />
+                <DashTile label="Transactions" value={nf(k.transactions?.count || 0)} accent="count"
+                  sub={`${nf(k.transactions?.bills || 0)} bills · ${nf(k.transactions?.grns || 0)} GRNs · ${nf(k.transactions?.payments || 0)} payments`} />
+              </div>
+            </Section>
+
+            <div className="cc-two">
+              <Section id="cc.alerts" title="Alerts & exceptions"
+                summary={`${(ov.alerts || []).length} open`}>
+                {!(ov.alerts || []).length
+                  ? <div className="empty">Nothing is asking for attention.</div>
+                  : (ov.alerts || []).map((a, i) => (
+                    <div key={i} className={'cc-alert ' + a.level}
+                      onClick={() => a.tab && go(a.tab)}
+                      style={{ cursor: a.tab ? 'pointer' : 'default' }}>
+                      <div className="cc-alerttitle">{a.title}</div>
+                      <div className="small">{a.body}{a.waiting ? ` · waiting ${a.waiting}` : ''}</div>
+                    </div>
+                  ))}
+              </Section>
+
+              <Section id="cc.slow" title="Low & dead stock"
+                summary={`${nf(k.low_stock?.count || 0)} low · ${nf(k.dead_stock?.count || 0)} dead`}>
+                <div className="tablewrap">
+                  <table className="items">
+                    <thead><tr><th>Product</th><th>Where</th><th className="num">Stock</th><th className="num">Value</th></tr></thead>
+                    <tbody>
+                      {(ov.low_stock || []).map((r) => (
+                        <tr key={'l' + r.sku}>
+                          <td>{r.product}<span className="small" style={{ color: 'var(--text-2)' }}> · low</span></td>
+                          <td className="small">{r.floor || 'store'}</td>
+                          <td className="num mono">{fmtQty(r.stock)}</td>
+                          <td className="num small">reorder at {fmtQty(r.reorder_level)}</td>
+                        </tr>
+                      ))}
+                      {(ov.dead_stock || []).map((r) => (
+                        <tr key={'d' + r.sku}>
+                          <td>{r.name}<span className="small" style={{ color: 'var(--text-2)' }}> · idle {r.days}d</span></td>
+                          <td className="small">{r.category || '—'}</td>
+                          <td className="num mono">{fmtQty(r.qty)}</td>
+                          <td className="num mono">₹ {nf(r.value)}</td>
+                        </tr>
+                      ))}
+                      {!(ov.low_stock || []).length && !(ov.dead_stock || []).length && (
+                        <tr><td colSpan={4} className="small" style={{ padding: 14 }}>
+                          Nothing is low or standing still.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Section>
+            </div>
+
+            <Section id="cc.activity" title="Recent activity"
+              summary={`${(ov.activity || []).length} newest`}
+              actions={<button className="btn" style={{ padding: '2px 9px', fontSize: 11 }}
+                onClick={(e) => { e.stopPropagation(); go('audit') }}>Open the audit trail</button>}>
+              <div className="tablewrap">
+                <table className="items">
+                  <thead><tr><th style={{ width: 130 }}>When</th><th style={{ width: 150 }}>Who</th>
+                    <th style={{ width: 120 }}>Module</th><th>What</th><th style={{ width: 150 }}>Where</th></tr></thead>
+                  <tbody>
+                    {!(ov.activity || []).length && (
+                      <tr><td colSpan={5} className="small" style={{ padding: 14 }}>
+                        Nothing has happened yet today.</td></tr>
+                    )}
+                    {(ov.activity || []).map((a, i) => (
+                      <tr key={i} className={a.outcome === 'refused' ? 'warnrow' : undefined}>
+                        <td className="small mono">{(a.local || '').replace('T', ' ').slice(0, 16)}</td>
+                        <td className="small"><b>{a.who}</b>{a.role ? <span style={{ color: 'var(--text-2)' }}> · {a.role}</span> : ''}</td>
+                        <td className="small">{a.module}</td>
+                        <td className="small">{a.summary}</td>
+                        <td className="small">{a.where || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+
+            <div className="small" style={{ color: 'var(--text-2)', marginTop: 10, lineHeight: 1.6 }}>
+              Figures are for the business day {ov.day} and read at {(ov.generated_at || '').replace('T', ' ')}.
+              Dead stock, the stores' low stock and supplier payments are company-wide — they belong
+              to a product or a supplier rather than to a building.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ==========================================================================
+//  Audit Trail — who did what, when and where
+//  ------------------------------------------------------------------------
+//  Written by the server for every change that reaches a route, so this screen
+//  is a reader and nothing else. An admin sees their own warehouses and not the
+//  account-management lines; a super admin sees everything. See services/audit.
+// ==========================================================================
+function AuditTrail({ go }) {
+  const [rows, setRows] = useState([])
+  const [meta, setMeta] = useState({ people: [], modules: [] })
+  const [f, setF] = useState({ user: '', screen: '', outcome: '', date_from: '', date_to: '', q: '' })
+  const [more, setMore] = useState(null)
+  const [busy, setBusy] = useState(true)
+  const [err, setErr] = useState('')
+
+  const load = useCallback((before) => {
+    setBusy(true)
+    return api.auditEvents({ ...f, limit: 100, before })
+      .then((r) => {
+        setRows((old) => (before ? [...old, ...r.events] : r.events))
+        setMore(r.next_before)
+        setMeta({ people: r.people || [], modules: r.modules || [] })
+        setErr('')
+      })
+      .catch((e) => setErr(e.status === 404 || e.status === 405
+        ? 'The server was started before the audit trail existed — restart it.'
+        : (e.detail || 'The trail could not be read')))
+      .finally(() => setBusy(false))
+  }, [f])
+  useEffect(() => { load() }, [load])
+
+  const set = (k, v) => setF((old) => ({ ...old, [k]: v }))
+  return (
+    <div className="screen scrolls">
+      <div className="pagehead">
+        <h2>📝 Audit Trail</h2>
+        <div className="pagesub">Every change, who made it and where — newest first</div>
+        <select className="sel" value={f.user} onChange={(e) => set('user', e.target.value)}
+          title="One person's actions" style={{ minWidth: 140 }}>
+          <option value="">Everyone</option>
+          {meta.people.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <select className="sel" value={f.screen} onChange={(e) => set('screen', e.target.value)}
+          title="One module" style={{ minWidth: 150 }}>
+          <option value="">Every module</option>
+          {meta.modules.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+        </select>
+        <select className="sel" value={f.outcome} onChange={(e) => set('outcome', e.target.value)}
+          title="Refused attempts only">
+          <option value="">Done and refused</option>
+          <option value="ok">Done</option>
+          <option value="refused">Refused</option>
+          <option value="failed">Failed sign-ins</option>
+        </select>
+        <input type="date" value={f.date_from} style={{ width: 140 }}
+          title="From this business day" onChange={(e) => set('date_from', e.target.value)} />
+        <input type="date" value={f.date_to} style={{ width: 140 }}
+          title="To this business day" onChange={(e) => set('date_to', e.target.value)} />
+        <input value={f.q} placeholder="Search the trail…" style={{ width: 180 }}
+          onChange={(e) => set('q', e.target.value)} />
+      </div>
+
+      <div className="screenbody">
+        {err && <div className="warnbox" style={{ marginBottom: 12 }}>
+          <div className="small">{err}</div></div>}
+        <div className="section">
+          <div className="tablewrap">
+            <table className="items">
+              <thead><tr>
+                <th style={{ width: 140 }}>When</th><th style={{ width: 160 }}>Who</th>
+                <th style={{ width: 130 }}>Module</th><th>What happened</th>
+                <th style={{ width: 140 }}>Where</th><th style={{ width: 120 }}>Reference</th>
+              </tr></thead>
+              <tbody>
+                {!rows.length && !busy && (
+                  <tr><td colSpan={6} className="small" style={{ padding: 16 }}>
+                    Nothing on the trail for these filters.</td></tr>
+                )}
+                {rows.map((e) => (
+                  <tr key={e.id} className={e.outcome !== 'ok' ? 'warnrow' : undefined}>
+                    <td className="small mono">{(e.local || '').replace('T', ' ')}</td>
+                    <td className="small"><b>{e.who}</b>
+                      {e.role_label && <span style={{ color: 'var(--text-2)' }}> · {e.role_label}</span>}</td>
+                    <td className="small">{e.module}</td>
+                    <td className="small">
+                      {e.outcome === 'refused' && <span className="badge" style={{ marginRight: 6 }}>refused</span>}
+                      {e.outcome === 'failed' && <span className="badge" style={{ marginRight: 6 }}>failed</span>}
+                      {e.summary}</td>
+                    <td className="small">{e.warehouse || '—'}</td>
+                    <td className="small mono">{e.ref || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="items-foot">
+            <span className="small">{rows.length} line(s)</span>
+            <span className="spacer" />
+            {more && <button className="btn" disabled={busy} onClick={() => load(more)}>
+              {busy ? 'Reading…' : 'Load older'}</button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ==========================================================================
 //  Central Dashboard — every warehouse, from one place
 //  ------------------------------------------------------------------------
 //  The company-wide view: what is standing where, what it is worth, and what
@@ -13275,6 +13919,12 @@ function CentralDashboard({ toast, go, onEnter }) {
       </div>
 
       <div className="screenbody">
+        {/* The same question box the Command Center leads with. An admin never
+            sees that screen, and "what did we sell today" is not a question only
+            the owner asks — so it is here too, answered inside whatever
+            warehouses this account is allotted. */}
+        <AskAnything go={go} />
+
         {err && <div className="warnbox" style={{ marginBottom: 14 }}>
           <h4>The dashboard could not be read</h4>
           <div className="small" style={{ color: 'var(--text-2)' }}>{err}</div></div>}
@@ -13355,7 +14005,7 @@ function CentralDashboard({ toast, go, onEnter }) {
               </div>
               <div className="items-foot">
                 <span>{rows.length} warehouse(s)</span>
-                <span>Σ qty <b>{fmtQty(sum(rows, (r) => r.qty))}</b></span>
+                <span>Î£ qty <b>{fmtQty(sum(rows, (r) => r.qty))}</b></span>
                 <span>Σ value <b>₹ {money(sum(rows, (r) => r.value))}</b></span>
                 <span className="spacer" />
                 <button className="btn" disabled={busy} onClick={rebuild}
@@ -13402,7 +14052,7 @@ function CentralDashboard({ toast, go, onEnter }) {
               </div>
               <div className="items-foot">
                 <span>{stores.length} store(s)</span>
-                <span>Σ tills <b>{sum(stores, (s) => s.terminals)}</b></span>
+                <span>Î£ tills <b>{sum(stores, (s) => s.terminals)}</b></span>
               </div>
             </Section>
 
@@ -14171,13 +14821,17 @@ function Catalogues({ toast }) {
 //  So the menu is not one list with things greyed out. It is two lists, and
 //  which one you get says where you are standing.
 // ==========================================================================
-const COMPANY_ONLY = new Set(['central', 'locations'])
+const COMPANY_ONLY = new Set(['command', 'audit', 'central', 'locations'])
 
 //: The whole company-level menu. Anything not here needs a warehouse first.
-const COMPANY_LEVEL = new Set(['central', 'locator', 'reports', 'locations', 'users'])
+const COMPANY_LEVEL = new Set(['command', 'audit', 'central', 'locator', 'reports',
+                               'locations', 'users'])
 
-const ROLE_RANK = { user: 1, admin: 2, superadmin: 3 }
-const ROLE_LABEL = { user: 'User', admin: 'Admin', superadmin: 'Super Admin' }
+//: Four ranked roles — services/users.py holds the same four, and everything is
+//: compared by RANK so the top one inherits every screen below it.
+const ROLE_RANK = { user: 1, admin: 2, superadmin: 3, superboss: 4 }
+const ROLE_LABEL = { user: 'User', admin: 'Admin', superadmin: 'Super Admin',
+                     superboss: 'Super Boss' }
 const rank = (role) => ROLE_RANK[role] || 0
 const atLeast = (role, need) => rank(role) >= rank(need)
 
@@ -14185,6 +14839,10 @@ const MODULES = [
   // Drawn at the very top of the menu, above the warehouse Dashboard — see the
   // sidebar items below, which hoist it out of this list. It stays HERE so it
   // is gated like every other module rather than being a special case.
+  // The owner's screen, above the Central Dashboard because it is above it in
+  // altitude: the whole business — warehouses, stores, tills, money and people —
+  // with one box to ask anything of it.
+  { key: 'command', icon: '🧭', label: 'Command Center', blurb: 'The whole business on one screen — ask anything, by voice too', min: 'superadmin' },
   { key: 'central', icon: '🏦', label: 'Central Dashboard', blurb: 'Every warehouse at once — stock, value and what moved', min: 'admin' },
   // First in the menu because it is first in the chain — the order is raised
   // before the lorry is booked in, the invoice read, or the goods received.
@@ -14241,6 +14899,9 @@ const MODULES = [
   // trades in.
   { key: 'catalogues', icon: '📚', label: 'Catalogues', blurb: 'What each warehouse deals in — its categories, its attributes and their values', min: 'admin' },
   { key: 'locations', icon: '🏢', label: 'Locations', blurb: 'Warehouses, the stores they supply, and the tills at each store', min: 'admin' },
+  // Beside Users & Access because they are two halves of accountability: one says
+  // who may do what, the other what they did.
+  { key: 'audit', icon: '📝', label: 'Audit Trail', blurb: 'Who did what, when and in which warehouse', min: 'admin' },
   { key: 'users', icon: '👤', label: 'Users & Access', blurb: 'Who can sign in, and how much of this they see', min: 'superadmin' },
 ]
 
@@ -14400,6 +15061,9 @@ const ICONS = {
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
   upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5M12 3v12" /></>,
   plus: <path d="M5 12h14M12 5v14" />,
+  compass: <><circle cx="12" cy="12" r="10" /><path d="m16.24 7.76-1.8 5.41a2 2 0 0 1-1.27 1.27L7.76 16.24l1.8-5.41a2 2 0 0 1 1.27-1.27z" /></>,
+  history: <><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5M12 7v5l3.5 2" /></>,
+  sparkle: <><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /><circle cx="12" cy="12" r="3" /></>,
 }
 
 function Icon({ name, size = 16, className }) {
@@ -14414,6 +15078,7 @@ function Icon({ name, size = 16, className }) {
 
 // Which mark each screen wears in the sidebar, the palette and the module cards.
 const NAV_ICON = {
+  command: 'compass', audit: 'history',
   central: 'dashboard', dashboard: 'dashboard', pickwh: 'building',
   purchase_orders: 'cart', lr: 'truck', documents: 'filetext', purchases: 'clipcheck',
   inventory: 'boxes', locator: 'search', stock_audit: 'shield', physical_audit: 'calc',
@@ -15653,17 +16318,25 @@ export default function App() {
   // Placed AFTER `role` deliberately — it reads it, and reading a `const` above
   // its declaration is a TDZ throw, not undefined.
   const canCentral = atLeast(role, 'admin')
-  const homeTab = canCentral ? 'central' : 'pickwh'
+  // Where each rank lands. The Command Center is the owner's and the super
+  // admin's first screen — it is the whole business, and everything else is a
+  // way into a part of it.
+  const canCommand = atLeast(role, 'superadmin')
+  const homeTab = canCommand ? 'command' : canCentral ? 'central' : 'pickwh'
   // The warehouse and the open tab are remembered separately and can come back
   // contradicting each other, so the tab is corrected, not just the menu.
   useEffect(() => {
     if (here && COMPANY_ONLY.has(tab)) { setTab('dashboard'); return }
     if (!here && tab !== 'pickwh' && !COMPANY_LEVEL.has(tab)) setTab(homeTab)
     if (!here && tab === 'central' && !canCentral) setTab('pickwh')
+    // The same for the Command Center: a terminal left on it by the owner must
+    // not greet an admin with a screen the server will refuse.
+    if (!here && tab === 'command' && !canCommand) setTab(homeTab)
+    if (!here && tab === 'audit' && !canCentral) setTab(homeTab)
     // A remembered Store tab this account is no longer given — the last person
     // at this terminal was an admin, or the access was narrowed since.
     if (here && storeUser && String(tab).startsWith('pos:') && !POS_USER_KEYS.has(tab)) setTab(storeHome)
-  }, [here, tab, canCentral, homeTab, storeUser, storeHome])
+  }, [here, tab, canCentral, canCommand, homeTab, storeUser, storeHome])
 
   // The stores this warehouse supplies, so the menu can call them by the names
   // somebody gave them. Re-read when the warehouse changes — a store belongs to
@@ -15919,10 +16592,12 @@ export default function App() {
     ? posItems.map((p) => (p && p.key === 'pos:counter' ? { ...p, badge: 'POS' } : p))
     : here
       ? [DASHBOARD, null, ...modules]
-      : [...modules.filter((m) => m.key === 'central'),
+      // The two whole-company screens are hoisted to the top, in altitude order:
+      // the Command Center is the business, the Central Dashboard is its stock.
+      : [...modules.filter((m) => m.key === 'command' || m.key === 'central'),
          ...(canCentral ? [] : [{ key: 'pickwh', label: 'Choose a warehouse',
            blurb: 'Pick the building you are working in' }]),
-         null, ...modules.filter((m) => m.key !== 'central')]
+         null, ...modules.filter((m) => m.key !== 'central' && m.key !== 'command')]
   const companyName = status?.company?.name || 'Essa'
   const navKind = ws === 'store' ? 'Retail Store' : ws === 'warehouse' ? 'Warehouse Ops' : 'Central Admin'
   const navContext = ws === 'store' ? `${storeLabel} · ${here.name}`
@@ -16269,6 +16944,10 @@ export default function App() {
         <Masters toast={toast} />
       ) : k === 'pickwh' ? (
         <ChooseWarehouse onEnter={enterWarehouse} user={user} />
+      ) : k === 'command' ? (
+        <CommandCenter go={setTab} toast={toast} user={user} role={role} />
+      ) : k === 'audit' ? (
+        <AuditTrail go={setTab} />
       ) : k === 'central' ? (
         <CentralDashboard toast={toast} go={setTab} onEnter={enterWarehouse} />
       ) : k === 'catalogues' ? (

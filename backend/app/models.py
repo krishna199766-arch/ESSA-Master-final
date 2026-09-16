@@ -2364,3 +2364,43 @@ class PriceChange(Base):
 
     revision = relationship("PriceRevision", back_populates="changes")
     product = relationship("Product")
+
+
+# ============================================================================
+#  Audit trail — who did what, when, and where
+# ============================================================================
+class AuditEvent(Base):
+    """One thing somebody DID: a GRN posted, a price changed, an account
+    restricted, a sign-in, a refused attempt.
+
+    Written by the auth middleware for every change that reaches a route (see
+    services/audit), not by each route remembering to — a trail that depends on a
+    line in every handler is a trail with holes exactly where nobody thought to
+    look. Reads are not recorded: opening a screen is not an act, and a log full
+    of them buries the ones that are.
+
+    The name, role and warehouse are copied onto the row rather than joined:
+    this is a record of what was true AT THE TIME. A user renamed or a warehouse
+    closed next year must not rewrite who did what last March.
+    """
+    __tablename__ = "audit_events"
+    id = Column(Integer, primary_key=True)
+    at = Column(DateTime, default=now, index=True)
+    username = Column(String, index=True)
+    full_name = Column(String)
+    role = Column(String)
+    method = Column(String)
+    path = Column(String)
+    #: The screen the path belongs to (security.POLICY) — what the trail filters on.
+    screen = Column(String, index=True)
+    #: create | modify | delete | print | signin | signout | password
+    action = Column(String)
+    #: ok | refused | failed — a refused change is an exception worth seeing.
+    outcome = Column(String, default="ok", index=True)
+    status = Column(Integer)
+    warehouse_id = Column(Integer, index=True)
+    warehouse_name = Column(String)
+    #: One plain sentence: "posted GRN GRN-2026-00012 — 50 units, ₹42,000".
+    summary = Column(String)
+    #: The document number the sentence is about, so it can be traced.
+    ref = Column(String, index=True)
