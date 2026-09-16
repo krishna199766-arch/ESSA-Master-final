@@ -252,6 +252,57 @@ def breakdown(start, end, by, at=None, item=None, limit=None):
     return out[:limit] if limit else out
 
 
+def returns_by(start, end, by="store", at=None):
+    """Credit notes grouped by the branch, floor or counter of the bill they came
+    off: [{label, notes, amount}].
+
+    Grouped on the NOTE, never on its lines — a three-line credit note joined to
+    its items is counted three times, which is what makes a returns column
+    disagree with the till's own day-end figure.
+    """
+    if not available():
+        return []
+    w_sql, w_params = _where(at)
+    label, joins = _BY.get(by, _BY["store"])
+    rows = pos_sales._rows(
+        f"SELECT {label}, COUNT(cn.id), SUM(COALESCE(cn.total,0)) "
+        "FROM " + _t("credit_notes") + " cn "
+        "LEFT JOIN " + _t("invoices") + " i ON i.id = cn.invoice_id" + joins.format(**_tables()) +
+        " WHERE cn.created_at >= ? AND cn.created_at < ?" + w_sql + f" GROUP BY {label}",
+        [_ts(start), _ts(end)] + w_params)
+    return [{"label": str(r[0] or "—").strip().strip("·").strip(), "notes": int(r[1] or 0),
+             "amount": round(_num(r[2]), 2)} for r in rows]
+
+
+def top_products(start, end, at=None, limit=6, item=None):
+    """Best sellers, with the SKU — so a row can be tracked, not just read.
+
+    `breakdown(by="product")` groups on the name, which is what a chart labels
+    itself with and is useless for following an item: two designs can share a
+    name and nothing can be traced from one. This carries the SKU and the
+    warehouse product id with it.
+    """
+    if not available():
+        return []
+    w_sql, w_params = _where(at)
+    f_sql, f_params, _w = item_filter(item) if item else ("", [], [])
+    rows = pos_sales._rows(
+        "SELECT p.sku, p.name, p.warehouse_id, COUNT(DISTINCT i.id), "
+        "       SUM(ii.line_total + COALESCE(ii.tax_amount,0)), SUM(ii.quantity) "
+        "FROM " + _t("invoice_items") + " ii "
+        "JOIN " + _t("invoices") + " i ON i.id = ii.invoice_id" + _item_joins() +
+        " WHERE i.invoice_date >= ? AND i.invoice_date < ?" + LIVE + w_sql + f_sql +
+        " GROUP BY p.sku, p.name, p.warehouse_id", win_params(start, end) + w_params + f_params)
+    out = [{"sku": r[0], "label": r[1], "warehouse_product_id": r[2], "bills": int(r[3] or 0),
+            "amount": round(_num(r[4]), 2), "qty": round(_num(r[5]), 3)} for r in rows]
+    out.sort(key=lambda r: -r["amount"])
+    return out[:limit] if limit else out
+
+
+def win_params(start, end):
+    return [_ts(start), _ts(end)]
+
+
 def discounts(start, end, by="cashier", at=None):
     """Who gave how much off: [{label, bills, discount, coupon, gross}]."""
     if not available():

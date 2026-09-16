@@ -5,6 +5,9 @@ import { parseDictation, coerceSpoken, dictationTargets } from './voicefill.js'
 // ---------- helpers ----------
 const num = (v) => (v === '' || v == null ? null : isNaN(+v) ? v : +v)
 const money = (v) => (v == null || v === '' ? '—' : Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+// A count, grouped the Indian way. `nf` further down is a number PARSER — a
+// figure passed through it prints 252000 where the rest of the app says 2,52,000.
+const n0 = (v) => Number(v || 0).toLocaleString('en-IN')
 const confClass = (c) => (c == null ? '' : c >= 0.9 ? 'hi' : c >= 0.6 ? 'mid' : 'lo')
 // Steps a headline figure down one size once it stops fitting on a single line.
 // A rupee total is three times the width of a count, and at the headline size
@@ -13181,16 +13184,20 @@ function ChooseWarehouse({ onEnter, user }) {
             Ask a super admin to tick one for you in Users &amp; Access.
           </div>
         )}
-        <div className="dgrid">
+        {/* `whcard`, not a plain KPI tile: the value here is a NAME, and the
+            tile's own rule keeps a figure on one line at any cost — which cut
+            "Palakkad Warehouse" off at the card's edge. See styles.css. */}
+        <div className="dgrid whgrid">
           {(rows || []).map((w) => (
-            <button key={w.id} className="dtile" style={{ textAlign: 'left' }}
+            <button key={w.id} className="dtile whcard" style={{ textAlign: 'left' }}
               title={`Work inside ${w.name}`} onClick={() => onEnter(w)}>
               <span className="lbl">{w.code || 'Warehouse'}</span>
-              <span className="val long">{w.name}</span>
+              <span className="val">{w.name}</span>
               <span className="sub">
                 {w.catalogue ? w.catalogue + ' · ' : ''}
-                {(w.stores || []).length} store(s) · Open →
+                {(w.stores || []).length} store(s)
               </span>
+              <span className="whgo">Open <span aria-hidden="true">→</span></span>
             </button>
           ))}
         </div>
@@ -13240,13 +13247,14 @@ function TraceChain({ chain }) {
   )
 }
 
-function AskAnything({ go, big, placeholder }) {
+function AskAnything({ go, big, placeholder, seed }) {
   const [q, setQ] = useState('')
   const [ans, setAns] = useState(null)
   const [busy, setBusy] = useState(false)
   const [meta, setMeta] = useState(null)
   const [details, setDetails] = useState(false)
   const spoken = useRef(false)
+  const asked = useRef(null)
 
   useEffect(() => { api.commandExamples().then(setMeta).catch(() => {}) }, [])
 
@@ -13281,6 +13289,17 @@ function AskAnything({ go, big, placeholder }) {
     setBusy(false)
   }
 
+  // A row somewhere else on the screen asking this box a question — clicking a
+  // product, a store or a warehouse. `seed.n` changes on every click, so asking
+  // the same thing twice still runs; the ref stops a re-render repeating it.
+  useEffect(() => {
+    if (!seed || !seed.q || asked.current === seed.n) return
+    asked.current = seed.n
+    setQ(seed.q)
+    run(seed.q)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed])
+
   const pick = (choice) => {
     setBusy(true)
     api.commandTrace(ans?.code || q, choice.kind, choice.id)
@@ -13312,8 +13331,8 @@ function AskAnything({ go, big, placeholder }) {
         <span className="ico" aria-hidden="true">✨</span>
         <span className="askfield">
           <input value={q} onChange={(e) => setQ(e.target.value)}
-            placeholder={placeholder || 'Ask anything about your business — or paste a GRN, bill or QR code'}
-            title="Type a question, speak it, or paste a code to track it end to end"
+            placeholder={placeholder || 'Ask anything — press 🎤 and say “today’s total invoices” — or paste a GRN, bill or QR code'}
+            title="Speak it or type it, in English or Tamil. A code pasted here is tracked end to end."
             onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) run() }} />
           {q && <button className="askclear" title="Clear" onClick={() => { setQ(''); setAns(null) }}>×</button>}
         </span>
@@ -13326,9 +13345,16 @@ function AskAnything({ go, big, placeholder }) {
         )}
       </div>
 
+      {!ans && big && (
+        <div className="cc-voicehint small">
+          🎤 Press the microphone and say it — “today’s total sales”, “today’s total
+          invoices”, “today’s total LR entries”, “today’s billing”, “which floor has
+          the highest sales” — in English or Tamil. The answer is read back to you.
+        </div>
+      )}
       {!ans && meta?.examples && (
         <div className="cc-examples">
-          {meta.examples.slice(0, 6).map((e) => (
+          {meta.examples.slice(0, big ? 8 : 6).map((e) => (
             <button key={e.q} className="cc-chip" title={e.note}
               onClick={() => { setQ(e.q); run(e.q) }}>{e.q}</button>
           ))}
@@ -13410,7 +13436,7 @@ function AskAnything({ go, big, placeholder }) {
                 <tbody>{ans.rows.slice(0, 200).map((r, i) => (
                   <tr key={i}>{ans.columns.map((c) => (
                     <td key={c} className={typeof r[c] === 'number' ? 'num mono' : ''}>
-                      {typeof r[c] === 'number' ? nf(r[c]) : (fmtLoose(r[c]) ?? '')}</td>
+                      {typeof r[c] === 'number' ? money(r[c]) : (fmtLoose(r[c]) ?? '')}</td>
                   ))}</tr>
                 ))}</tbody>
               </table>
@@ -13450,22 +13476,27 @@ const CC_SERIES = [
   ['movement', 'Stock movement', 'Units in and out of the warehouses'],
 ]
 
-function CommandCenter({ go, toast, user, role }) {
+function CommandCenter({ go, toast, user, role, onEnter }) {
   const [ov, setOv] = useState(null)
   const [day, setDay] = useState('')
+  const [scope, setScope] = useState(null)        // one warehouse, or every one
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [view, setView] = useState('sales')
+  // What a clicked row asks the question box — a product's SKU traces it end to
+  // end, a place asks for its sales. See AskAnything's `seed`.
+  const [seed, setSeed] = useState(null)
+  const ask = (q) => setSeed({ q, n: Date.now() })
 
   const load = useCallback(() => {
     setBusy(true)
-    return api.commandOverview(day || undefined)
+    return api.commandOverview(day || undefined, scope || undefined)
       .then((r) => { setOv(r); setErr('') })
       .catch((e) => setErr(e.status === 404 || e.status === 405
         ? 'restart'
         : (e.detail || 'The Command Center could not be read')))
       .finally(() => setBusy(false))
-  }, [day])
+  }, [day, scope])
   useEffect(() => { load() }, [load])
 
   if (err === 'restart') return (
@@ -13484,6 +13515,13 @@ function CommandCenter({ go, toast, user, role }) {
   // ₹8.42 L, not ₹842,650.00 — a tile is read at a glance, and the full figure
   // is in its tooltip. Named apart from the app's `money`, which is the long form.
   const short = (v) => '₹' + compact(+v || 0)
+  // The warehouse row behind an id, so "Open POS" hands the shell the same
+  // building the picker would — with its code, which the context bar shows.
+  const whOf = (id) => {
+    const w = (ov?.places?.warehouses || []).find((x) => x.warehouse_id === id)
+      || (ov?.places?.picker || []).find((x) => x.warehouse_id === id)
+    return w ? { id: w.warehouse_id, name: w.name, code: w.code } : null
+  }
   const series = ov?.series
   const chart = () => {
     if (!series) return null
@@ -13516,8 +13554,20 @@ function CommandCenter({ go, toast, user, role }) {
         <h2>🧭 Command Center</h2>
         <div className="pagesub">
           {ov ? `${ov.label} · ${ov.counts?.warehouses ?? 0} warehouse(s), ${ov.counts?.stores ?? 0} store(s), ${ov.counts?.counters ?? 0} till(s)` : 'The whole business on one screen'}
-          {ov?.scope?.restricted && ' · your allotted warehouses only'}
+          {ov?.scope?.warehouse ? ` · ${ov.scope.warehouse} only`
+            : ov?.scope?.restricted ? ' · your allotted warehouses only' : ''}
         </div>
+        {/* Scopes the WHOLE screen — tiles, charts, alerts and activity — to one
+            building, the way the Central Dashboard's picker does. The warehouse
+            table below is the other way in: click a row. */}
+        <select className="sel" value={scope || ''} style={{ minWidth: 190 }}
+          title="Show one warehouse — its stock, its stores' takings, its GRNs and its people"
+          onChange={(e) => setScope(e.target.value ? +e.target.value : null)}>
+          <option value="">All warehouses</option>
+          {(ov?.places?.picker || []).map((w) => (
+            <option key={w.warehouse_id} value={w.warehouse_id}>{w.name}</option>
+          ))}
+        </select>
         <input type="date" value={day} max={ov?.day} style={{ width: 150 }}
           title="Look at another business day" onChange={(e) => setDay(e.target.value)} />
         {day && <button className="btn" onClick={() => setDay('')}>Today</button>}
@@ -13525,7 +13575,7 @@ function CommandCenter({ go, toast, user, role }) {
       </div>
 
       <div className="screenbody">
-        <AskAnything go={go} big />
+        <AskAnything go={go} big seed={seed} />
 
         {err && <div className="warnbox" style={{ marginBottom: 14 }}>
           <h4>Some of this could not be read</h4>
@@ -13543,15 +13593,15 @@ function CommandCenter({ go, toast, user, role }) {
 
             <div className="dgrid" style={{ marginBottom: 'var(--sp-4)' }}>
               <DashTile label={`${ov.label}'s Sales`} value={short(k.sales?.value)} accent="money"
-                sub={`${nf(k.sales?.bills || 0)} bill(s) · ${fmtQty(k.sales?.units || 0)} units`}
-                hint={`Billed ₹${nf(k.sales?.gross || 0)} less ₹${nf(k.sales?.returns || 0)} of customer returns`}
+                sub={`${n0(k.sales?.bills || 0)} bill(s) · ${fmtQty(k.sales?.units || 0)} units`}
+                hint={`Billed ₹${money(k.sales?.gross || 0)} less ₹${money(k.sales?.returns || 0)} of customer returns`}
                 onClick={() => go('central')} />
               <DashTile label="Purchases" value={short(k.purchases?.value)} accent="stock"
-                sub={`${nf(k.purchases?.grns || 0)} GRN(s) · ${fmtQty(k.purchases?.units || 0)} units`}
+                sub={`${n0(k.purchases?.grns || 0)} GRN(s) · ${fmtQty(k.purchases?.units || 0)} units`}
                 hint="GRNs posted today — goods that actually became stock"
                 onClick={() => go('purchases')} />
               <DashTile label="Stock Value" value={short(k.stock_value?.value)} accent="count"
-                sub={`${fmtQty(k.stock_value?.qty || 0)} units · ${nf(k.stock_value?.items || 0)} items`}
+                sub={`${fmtQty(k.stock_value?.qty || 0)} units · ${n0(k.stock_value?.items || 0)} items`}
                 hint="Quantity × each warehouse's own weighted-average cost"
                 onClick={() => go('inventory')} />
               <DashTile label="Profit" value={short(k.profit?.value)} accent="money"
@@ -13561,21 +13611,21 @@ function CommandCenter({ go, toast, user, role }) {
             </div>
 
             <div className="dgrid small-tiles" style={{ marginBottom: 'var(--sp-4)' }}>
-              <DashTile label="Warehouses" value={nf(ov.counts?.warehouses || 0)} accent="count"
+              <DashTile label="Warehouses" value={n0(ov.counts?.warehouses || 0)} accent="count"
                 sub="open" onClick={() => go('locations')} />
-              <DashTile label="Stores" value={nf(ov.counts?.stores || 0)} accent="count"
+              <DashTile label="Stores" value={n0(ov.counts?.stores || 0)} accent="count"
                 sub="selling" onClick={() => go('locations')} />
-              <DashTile label="POS Counters" value={nf(ov.counts?.counters || 0)} accent="count"
+              <DashTile label="POS Counters" value={n0(ov.counts?.counters || 0)} accent="count"
                 sub="tills" onClick={() => go('locations')} />
               {ov.counts?.users != null && (
-                <DashTile label="Users" value={nf(ov.counts.users)} accent="count"
+                <DashTile label="Users" value={n0(ov.counts.users)} accent="count"
                   sub="can sign in" onClick={() => go('users')} />
               )}
-              <DashTile label="Low Stock" value={nf(k.low_stock?.count || 0)} accent="back"
+              <DashTile label="Low Stock" value={n0(k.low_stock?.count || 0)} accent="back"
                 tone={k.low_stock?.count ? 'warn' : ''} sub="in the stores"
                 hint="Store products at or below their reorder level" />
               <DashTile label="Returns" value={short(k.returns?.value)} accent="back"
-                sub={`${nf(k.returns?.store_notes || 0)} customer · ${nf(k.returns?.debit_notes || 0)} supplier`} />
+                sub={`${n0(k.returns?.store_notes || 0)} customer · ${n0(k.returns?.debit_notes || 0)} supplier`} />
             </div>
 
             <Section id="cc.flow" title="Business overview"
@@ -13590,13 +13640,136 @@ function CommandCenter({ go, toast, user, role }) {
               {chart()}
             </Section>
 
+            {/* ---- one row per warehouse: what it holds AND what its shops took ---- */}
+            <Section id="cc.warehouses" title="Warehouses"
+              summary={`${(ov.places?.warehouses || []).length} building(s)`}>
+              <div className="tablewrap">
+                <table className="items">
+                  <thead><tr>
+                    <th>Warehouse</th><th>Code</th><th className="num">Stores</th>
+                    <th className="num">Stock (qty)</th><th className="num">Stock value</th>
+                    <th className="num">{ov.label}'s sales</th><th className="num">Bills</th>
+                    <th className="num">Purchases</th><th className="num">In transit</th>
+                    <th style={{ width: 170 }}></th>
+                  </tr></thead>
+                  <tbody>
+                    {!(ov.places?.warehouses || []).length && (
+                      <tr><td colSpan={10} className="small" style={{ padding: 16 }}>
+                        No warehouses yet — add one under Locations.</td></tr>
+                    )}
+                    {(ov.places?.warehouses || []).map((w) => (
+                      <tr key={w.warehouse_id} className={w.warehouse_id === scope ? 'sel' : ''}
+                        style={{ cursor: 'pointer' }}
+                        title="Show the whole screen for this warehouse"
+                        onClick={() => setScope(w.warehouse_id === scope ? null : w.warehouse_id)}>
+                        <td><b>{w.name}</b>{w.active === false && <span className="small"> · closed</span>}</td>
+                        <td className="mono small">{w.code || '—'}</td>
+                        <td className="num">{w.stores}</td>
+                        <td className="num mono">{fmtQty(w.qty)}</td>
+                        <td className="num mono">₹ {money(w.value)}</td>
+                        <td className="num mono">₹ {money(w.sales)}</td>
+                        <td className="num">{n0(w.bills)}</td>
+                        <td className="num mono">₹ {money(w.purchases)}</td>
+                        <td className="num mono">{fmtQty(w.in_transit)}</td>
+                        {/* No per-row "Ask" button: the bar at the top is the way
+                            to ask, by voice or typed, and a column of twenty
+                            identical buttons is a column of noise. Clicking the
+                            row scopes the screen; Open walks into the building. */}
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className="btn" style={{ padding: '2px 10px' }}
+                            title={`Work inside ${w.name} — every screen shows only its own`}
+                            onClick={(e) => { e.stopPropagation(); onEnter && onEnter({ id: w.warehouse_id, name: w.name, code: w.code }) }}>
+                            Open →</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+
+            {/* ---- and one per store, with the tills under it ---- */}
+            <Section id="cc.stores" title="Stores & POS counters"
+              summary={`${(ov.places?.stores || []).length} store(s) · ${(ov.places?.counters || []).length} till(s) billing`}>
+              <div className="tablewrap">
+                <table className="items">
+                  <thead><tr>
+                    <th>Store</th><th>Warehouse</th><th className="num">Tills</th>
+                    <th className="num">Bills</th><th className="num">{ov.label}'s sales</th>
+                    <th className="num">Returns</th><th style={{ width: 190 }}></th>
+                  </tr></thead>
+                  <tbody>
+                    {!(ov.places?.stores || []).length && (
+                      <tr><td colSpan={7} className="small" style={{ padding: 16 }}>
+                        No stores under this scope — add one under Locations.</td></tr>
+                    )}
+                    {(ov.places?.stores || []).map((s) => (
+                      <tr key={s.id} style={{ cursor: 'pointer' }}
+                        title={`Ask for ${s.name}'s sales`}
+                        onClick={() => ask(`Today's sales at ${s.name}`)}>
+                        <td><b>{s.name}</b>
+                          {/* A badge, not a sentence: it is true of every row on a
+                              shop whose branch names differ, and a paragraph
+                              repeated seven times stops being read. */}
+                          {!s.matched && <span className="badge" style={{ marginLeft: 6 }}
+                            title="The till spells this branch differently, so its takings cannot be matched to this store — the names have to agree">
+                            unmatched</span>}</td>
+                        <td className="small">{s.warehouse || '—'}</td>
+                        <td className="num">{s.terminals}</td>
+                        <td className="num">{n0(s.bills)}</td>
+                        <td className="num mono">₹ {money(s.sales)}</td>
+                        <td className="num mono">{s.returns ? '₹ ' + money(s.returns) : '—'}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className="btn" style={{ padding: '2px 10px' }}
+                            title={`Open this store's billing screens`}
+                            onClick={() => onEnter && onEnter(whOf(s.warehouse_id) || { id: s.warehouse_id, name: s.warehouse }, 'pos:home')}>
+                            Open POS →</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {(ov.places?.counters || []).length > 0 && (
+                <div className="tablewrap" style={{ marginTop: 12 }}>
+                  <table className="items">
+                    <thead><tr><th>POS counter</th><th className="num">Bills</th>
+                      <th className="num">{ov.label}'s sales</th></tr></thead>
+                    <tbody>{(ov.places.counters).map((c) => (
+                      <tr key={c.label}>
+                        <td className="small">{c.label}</td>
+                        <td className="num">{n0(c.bills)}</td>
+                        <td className="num mono">₹ {money(c.amount)}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              {(ov.places?.cashiers || []).length > 0 && (
+                <div className="small" style={{ marginTop: 8, color: 'var(--text-2)' }}>
+                  Billed by: {(ov.places.cashiers).map((c) => `${c.label} (₹${money(c.amount)})`).join(' · ')}
+                </div>
+              )}
+            </Section>
+
             <div className="vizgrid">
               <ChartCard title="Top selling products — last 30 days"
-                columns={['Product', 'Sales']}
-                rows={(ov.top_products || []).map((r) => [r.label, short(r.amount)])}>
-                {(ov.top_products || []).length
-                  ? <HBars rows={(ov.top_products || []).map((r) => ({ label: r.label, value: r.amount }))} unit="₹" />
-                  : <div className="empty">No store sales in the last 30 days.</div>}
+                note="Click a bar's row in the table to follow that product end to end"
+                columns={['Product', 'SKU', 'Sales']}
+                rows={(ov.top_products || []).map((r) => [r.label, r.sku, short(r.amount)])}>
+                {(ov.top_products || []).length ? <>
+                  <HBars rows={(ov.top_products || []).map((r) => ({ label: r.label, value: r.amount }))} unit="₹" />
+                  {/* A bar cannot be clicked in an SVG chart without turning the
+                      chart into a control; the chips can, and they carry the SKU
+                      — which is what a trace needs. */}
+                  <div className="cc-examples">
+                    {(ov.top_products || []).map((r) => (
+                      <button key={r.sku || r.label} className="cc-chip"
+                        title={`Follow ${r.sku || r.label} from its supplier to what is left`}
+                        onClick={() => ask(r.sku || r.label)}>{r.label} →</button>
+                    ))}
+                  </div>
+                </> : <div className="empty">No store sales in the last 30 days.</div>}
               </ChartCard>
               <ChartCard title={`Sales by floor — ${ov.label.toLowerCase()}`}
                 columns={['Floor', 'Sales']}
@@ -13608,17 +13781,17 @@ function CommandCenter({ go, toast, user, role }) {
             </div>
 
             <Section id="cc.money" title="What needs somebody"
-              summary={`${nf(k.pending_grns?.count || 0)} GRN(s), ₹${compact(k.pending_payments?.value || 0)} owed`}>
+              summary={`${n0(k.pending_grns?.count || 0)} GRN(s), ₹${compact(k.pending_payments?.value || 0)} owed`}>
               <div className="dgrid small-tiles">
-                <DashTile label="Pending GRNs" value={nf(k.pending_grns?.count || 0)} accent="adjust"
+                <DashTile label="Pending GRNs" value={n0(k.pending_grns?.count || 0)} accent="adjust"
                   tone={k.pending_grns?.count ? 'warn' : ''}
-                  sub={`₹${compact(k.pending_grns?.value || 0)} · ${nf(k.pending_grns?.documents || 0)} invoice(s) to review`}
+                  sub={`₹${compact(k.pending_grns?.value || 0)} · ${n0(k.pending_grns?.documents || 0)} invoice(s) to review`}
                   onClick={() => go('purchases')} />
                 <DashTile label="Pending Payments" value={short(k.pending_payments?.value)} accent="money"
                   tone={k.pending_payments?.overdue ? 'warn' : ''}
-                  sub={`${nf(k.pending_payments?.bills || 0)} bill(s) · ₹${compact(k.pending_payments?.overdue || 0)} over 30 days`}
+                  sub={`${n0(k.pending_payments?.bills || 0)} bill(s) · ₹${compact(k.pending_payments?.overdue || 0)} over 30 days`}
                   onClick={() => go('payments')} />
-                <DashTile label="Dead Stock" value={nf(k.dead_stock?.count || 0)} accent="back"
+                <DashTile label="Dead Stock" value={n0(k.dead_stock?.count || 0)} accent="back"
                   tone={k.dead_stock?.critical ? 'warn' : ''}
                   sub={`₹${compact(k.dead_stock?.value || 0)} · idle ${k.dead_stock?.days || 90}+ days`}
                   onClick={() => go('deadstock')} />
@@ -13627,8 +13800,8 @@ function CommandCenter({ go, toast, user, role }) {
                   onClick={() => go('inward')} />
                 <DashTile label="Discounts" value={short(k.discounts?.value)} accent="back"
                   sub="given at the tills today" />
-                <DashTile label="Transactions" value={nf(k.transactions?.count || 0)} accent="count"
-                  sub={`${nf(k.transactions?.bills || 0)} bills · ${nf(k.transactions?.grns || 0)} GRNs · ${nf(k.transactions?.payments || 0)} payments`} />
+                <DashTile label="Transactions" value={n0(k.transactions?.count || 0)} accent="count"
+                  sub={`${n0(k.transactions?.bills || 0)} bills · ${n0(k.transactions?.grns || 0)} GRNs · ${n0(k.transactions?.payments || 0)} payments`} />
               </div>
             </Section>
 
@@ -13648,13 +13821,16 @@ function CommandCenter({ go, toast, user, role }) {
               </Section>
 
               <Section id="cc.slow" title="Low & dead stock"
-                summary={`${nf(k.low_stock?.count || 0)} low · ${nf(k.dead_stock?.count || 0)} dead`}>
+                summary={`${n0(k.low_stock?.count || 0)} low · ${n0(k.dead_stock?.count || 0)} dead`}>
                 <div className="tablewrap">
                   <table className="items">
                     <thead><tr><th>Product</th><th>Where</th><th className="num">Stock</th><th className="num">Value</th></tr></thead>
                     <tbody>
+                      {/* Every product row opens its own history — supplier, GRN,
+                          warehouse, what sold, what is left. */}
                       {(ov.low_stock || []).map((r) => (
-                        <tr key={'l' + r.sku}>
+                        <tr key={'l' + r.sku} style={{ cursor: 'pointer' }}
+                          title={`Follow ${r.sku} end to end`} onClick={() => ask(r.sku)}>
                           <td>{r.product}<span className="small" style={{ color: 'var(--text-2)' }}> · low</span></td>
                           <td className="small">{r.floor || 'store'}</td>
                           <td className="num mono">{fmtQty(r.stock)}</td>
@@ -13662,11 +13838,12 @@ function CommandCenter({ go, toast, user, role }) {
                         </tr>
                       ))}
                       {(ov.dead_stock || []).map((r) => (
-                        <tr key={'d' + r.sku}>
+                        <tr key={'d' + r.sku} style={{ cursor: 'pointer' }}
+                          title={`Follow ${r.sku} end to end`} onClick={() => ask(r.sku)}>
                           <td>{r.name}<span className="small" style={{ color: 'var(--text-2)' }}> · idle {r.days}d</span></td>
                           <td className="small">{r.category || '—'}</td>
                           <td className="num mono">{fmtQty(r.qty)}</td>
-                          <td className="num mono">₹ {nf(r.value)}</td>
+                          <td className="num mono">₹ {money(r.value)}</td>
                         </tr>
                       ))}
                       {!(ov.low_stock || []).length && !(ov.dead_stock || []).length && (
@@ -16948,7 +17125,8 @@ export default function App() {
       ) : k === 'pickwh' ? (
         <ChooseWarehouse onEnter={enterWarehouse} user={user} />
       ) : k === 'command' ? (
-        <CommandCenter go={setTab} toast={toast} user={user} role={role} />
+        <CommandCenter go={setTab} toast={toast} user={user} role={role}
+          onEnter={enterWarehouse} />
       ) : k === 'audit' ? (
         <AuditTrail go={setTab} />
       ) : k === 'central' ? (

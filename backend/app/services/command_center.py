@@ -304,12 +304,91 @@ def activity(db, limit=15, allowed=None, at=None, hide_screens=()):
 # ---------------------------------------------------------------------------
 #  The whole screen
 # ---------------------------------------------------------------------------
-def overview(db, allowed=None, day=None, with_users=True):
+def places(db, day, scope_ids=None, at=None, allotted=None):
+    """The business by PLACE: one row per warehouse, per store and per till.
+
+    The tiles above answer "how did the company do today"; this answers "which of
+    my six warehouses, seven stores and two tills did it" — the question the
+    tiles always provoke, and the reason a dashboard without it sends somebody
+    off to three other screens to find out.
+
+    Every row carries both halves: what the warehouse HOLDS (our own ledger) and
+    what its stores SOLD (the till's), matched by store name — the only key the
+    two databases share.
+    """
+    start, end = business_day.bounds(day)
+    from . import locations as loc_svc
+
+    sold = {r["label"].lower(): r for r in pos_insights.breakdown(start, end, "store", at)}
+    back = {r["label"].lower(): r for r in pos_insights.returns_by(start, end, "store", at)}
+    bought = {}
+    for p in purchases_between(db, start, end, scope_ids)["rows"]:
+        b = bought.setdefault(p.warehouse_id, {"grns": 0, "value": 0.0})
+        b["grns"] += 1
+        b["value"] = round(b["value"] + float(p.grand_total or 0), 2)
+    transit = {w["warehouse_id"]: w for w in
+               stock_loc.transfer_summary(db)["warehouses"]}
+
+    stores, by_wh = [], {}
+    for s in loc_svc.store_rows(db):
+        if scope_ids and s["warehouse_id"] not in scope_ids:
+            continue
+        key = " ".join((s["name"] or "").split()).lower()
+        sale, ret = sold.get(key), back.get(key)
+        row = {**{k: s[k] for k in ("id", "name", "code", "warehouse_id", "warehouse",
+                                    "terminals", "type", "active")},
+               "bills": (sale or {}).get("bills", 0),
+               "sales": (sale or {}).get("amount", 0.0),
+               "returns": (ret or {}).get("amount", 0.0),
+               # A branch the till spells differently sold under a name we cannot
+               # match — said here rather than shown as a store that sold nothing.
+               "matched": sale is not None or not pos_insights.available()}
+        stores.append(row)
+        w = by_wh.setdefault(s["warehouse_id"], {"bills": 0, "sales": 0.0, "stores": 0})
+        w["stores"] += 1
+        w["bills"] += row["bills"]
+        w["sales"] = round(w["sales"] + row["sales"], 2)
+    stores.sort(key=lambda r: -r["sales"])
+
+    warehouses = []
+    for r in stock_loc.warehouse_totals(db, warehouse_ids=scope_ids):
+        wid = r["warehouse_id"]
+        s = by_wh.get(wid, {})
+        b = bought.get(wid, {})
+        warehouses.append({
+            "warehouse_id": wid, "name": r["name"], "code": r["code"],
+            "active": r.get("active", True), "qty": r["qty"], "value": r["value"],
+            "items": r["items"], "stores": s.get("stores", r.get("store_count", 0)),
+            "sales": s.get("sales", 0.0), "bills": s.get("bills", 0),
+            "purchases": b.get("value", 0.0), "grns": b.get("grns", 0),
+            "in_transit": (transit.get(wid) or {}).get("in_transit", 0.0),
+        })
+    warehouses.sort(key=lambda r: -r["value"])
+
+    counters = pos_insights.breakdown(start, end, "counter", at)
+    cash = pos_insights.breakdown(start, end, "cashier", at)
+    # The picker lists every building this ACCOUNT may see, never only the one
+    # being shown — scoping a screen to Erode must not remove the way back to
+    # Karur. The same rule the Central Dashboard's warehouse table follows.
+    picker = [{"warehouse_id": r["warehouse_id"], "name": r["name"], "code": r["code"]}
+              for r in stock_loc.warehouse_totals(db, warehouse_ids=allotted)]
+    return {"warehouses": warehouses, "stores": stores, "counters": counters,
+            "cashiers": cash, "picker": sorted(picker, key=lambda r: r["name"] or "")}
+
+
+def overview(db, allowed=None, day=None, with_users=True, warehouse_id=None):
     day = day or business_day.today()
     start, end = business_day.bounds(day)
-    loc_ids = pos_insights.location_ids_for_warehouses(db, allowed) if allowed else None
+    # One building, or every building this account may see. The allotment is kept
+    # apart from the scope: the picker is drawn from what the ACCOUNT may see, so
+    # choosing one warehouse never removes the way back to the others.
+    allotted = list(allowed) if allowed else None
+    scope_ids = [int(warehouse_id)] if warehouse_id else allotted
+    loc_ids = (pos_insights.location_ids_for_warehouses(db, scope_ids)
+               if scope_ids else None)
     at = {"location_ids": loc_ids} if loc_ids is not None else None
     pos_ok = pos_insights.available()
+    allowed = scope_ids
 
     sales = _safe(lambda: pos_insights.totals(start, end, at), {"available": False})
     prof = _safe(lambda: pos_insights.margin(start, end, at), {"available": False})
@@ -325,8 +404,8 @@ def overview(db, allowed=None, day=None, with_users=True):
     dead = _safe(lambda: dead_counts(db), {"days": 90, "count": 0, "value": 0, "critical": 0, "rows": []})
     low = _safe(lambda: pos_insights.low_stock(limit=8), {"available": False, "count": 0, "rows": []})
     sent_today = _safe(lambda: outwards_posted_between(db, start, end, allowed), 0)
-    top = _safe(lambda: pos_insights.breakdown(
-        *business_day.bounds(day - dt.timedelta(days=29), day), "product", at, limit=6), [])
+    top = _safe(lambda: pos_insights.top_products(
+        *business_day.bounds(day - dt.timedelta(days=29), day), at, limit=6), [])
     top_floors = _safe(lambda: pos_insights.breakdown(start, end, "floor", at, limit=6), [])
 
     k = {
@@ -369,6 +448,9 @@ def overview(db, allowed=None, day=None, with_users=True):
         "day": day.isoformat(), "label": business_day.label(day, day),
         "generated_at": business_day.now_local().isoformat(timespec="minutes"),
         "scope": {"restricted": bool(allowed),
+                  "warehouse_id": int(warehouse_id) if warehouse_id else None,
+                  "warehouse": next((r["name"] for r in stock_rows
+                                     if warehouse_id and r["warehouse_id"] == int(warehouse_id)), None),
                   "warehouses": [r["name"] for r in stock_rows] if allowed else None,
                   "company_wide": ["dead_stock", "low_stock", "pending_payments", "payments"]},
         "pos": {"available": pos_ok},
@@ -377,8 +459,11 @@ def overview(db, allowed=None, day=None, with_users=True):
         "series": _safe(lambda: series(db, day, 14, allowed, at), None),
         "top_products": top,
         "top_floors": top_floors,
-        "warehouses": sorted(({"name": r["name"], "value": r["value"], "qty": r["qty"]}
-                              for r in stock_rows), key=lambda r: -r["value"]),
+        # One row per warehouse, per store and per till — the drill-down the
+        # tiles above always provoke. See `places`.
+        "places": _safe(lambda: places(db, day, scope_ids, at, allotted),
+                        {"warehouses": [], "stores": [], "counters": [], "cashiers": [],
+                         "picker": []}),
         "low_stock": low.get("rows", []),
         "dead_stock": [{"sku": r["sku"], "name": r["name"], "category": r["category"],
                         "qty": r["qty"], "value": r["stock_value"], "days": r["days_idle"]}

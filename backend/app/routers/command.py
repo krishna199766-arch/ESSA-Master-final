@@ -8,7 +8,7 @@ sales" is told Erode's.
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -32,12 +32,21 @@ def _allowed(request: Request):
 
 
 @router.get("/overview")
-def overview(request: Request, day: Optional[str] = None, db: Session = Depends(get_db)):
+def overview(request: Request, day: Optional[str] = None,
+             warehouse_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Every tile, chart, list and alert on the Command Center, in one call.
-    `day` (ISO) looks back at another business day; it defaults to today."""
+
+    `day` (ISO) looks back at another business day; it defaults to today.
+    `warehouse_id` scopes the WHOLE screen to one building — its stock, its
+    stores' takings, its GRNs, its people's activity — which is what the picker
+    at the top sends. A building this account is not allotted is refused rather
+    than widened to everything, the same as anywhere else."""
     d = business_day.parse_day(day) or business_day.today()
     role = _who(request).get("role")
-    return command_center.overview(db, allowed=_allowed(request), day=d,
+    mine = _allowed(request)
+    if warehouse_id and mine and int(warehouse_id) not in mine:
+        raise HTTPException(403, "You are not allotted that warehouse.")
+    return command_center.overview(db, allowed=mine, day=d, warehouse_id=warehouse_id,
                                    with_users=rank(role) >= ROLE_RANK["superadmin"])
 
 

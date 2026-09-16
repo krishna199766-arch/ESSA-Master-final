@@ -632,6 +632,33 @@ a { color: var(--accent); text-underline-offset: 2px; }
   border-color: var(--brand-300); }
 .dtile.ok:hover { border-color: var(--accent); }
 
+/* ---------- the warehouse picker's cards ----------
+   The same card, holding a NAME instead of a figure — and a name cannot be
+   treated like a figure. `.val` is deliberately `nowrap` above, because a
+   wrapped number reads as a mistake and a clipped digit is a wrong number; a
+   warehouse called "Palakkad Warehouse" under that rule simply ran off the edge
+   of its card and was cut in half.
+
+   So names wrap, at a size that fits two of them. `anywhere` rather than
+   `break-word`: "Thiruvananthapuram" has no space to break at, and the only
+   thing worse than a hyphen is an overflow.
+
+   Nothing reserves a second line. The grid already stretches every card in a row
+   to the tallest, so a blank line under "MD" would be padding with a purpose
+   nobody can see — instead the "Open" foot is pushed to the bottom (margin-top:
+   auto), which lines the feet up across the row however long the names are. */
+.dtile.whcard .val { white-space: normal; overflow-wrap: anywhere;
+  font-size: var(--fs-lg); line-height: 1.3; letter-spacing: -.01em; }
+/* One line of context, then the way in, right where the eye leaves the card. */
+.dtile.whcard { padding-bottom: 12px; }
+.dtile.whcard .sub { margin-top: 2px; }
+.dtile.whcard .whgo { margin-top: auto; padding-top: 10px; font-size: var(--fs-sm);
+  font-weight: 600; color: var(--brand); border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); }
+.dtile.whcard:hover .whgo { color: var(--accent); }
+/* Wider than a KPI tile: these hold words, and 168px of card is two syllables. */
+.dgrid.whgrid { grid-template-columns: repeat(auto-fill, minmax(min(232px, 100%), 1fr)); }
+
 .modgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr));
   gap: 12px; }
 /* ---------- quick-action cards ----------
@@ -2256,6 +2283,10 @@ table.items tbody tr.sel { background: var(--brand-100); }
 .cc-ask.big .askbar { padding: var(--sp-2); background: var(--brand-50);
   border: 1px solid var(--brand-200); border-radius: var(--radius-lg); }
 .cc-ask.big .askbar input { font-size: var(--fs-md); padding: 9px 12px; }
+
+/* The microphone is the point of this bar on the owner's screen, so the screen
+   says so once, in the words somebody would actually speak. */
+.cc-voicehint { margin-top: var(--sp-2); color: var(--text-2); line-height: 1.6; }
 
 /* Example questions, and the choices when one code names two records. */
 .cc-examples { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }

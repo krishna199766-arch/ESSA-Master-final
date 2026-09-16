@@ -869,7 +869,7 @@ export const api = {
   // Every tile, chart, list and alert in one call; `day` looks at another
   // business day. `status` is kept on the errors for the same reason askReport
   // does it: a 404 here is a server started before this module existed.
-  commandOverview: (day) => fetch('/api/command/overview' + (day ? '?day=' + day : ''))
+  commandOverview: (day, warehouseId) => fetch('/api/command/overview' + qs({ day, warehouse_id: warehouseId }))
     .then(async r => { const j = await r.json().catch(() => ({}))
       if (!r.ok) throw Object.assign(new Error('command'), { status: r.status, detail: j.detail })
       return j }),

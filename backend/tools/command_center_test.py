@@ -212,6 +212,12 @@ db.add(models.PurchaseLine(purchase_id=grn.id, product_id=p1.id, description="LA
 db.add(models.StockMovement(product_id=p1.id, warehouse_id=main_wh.id, qty_delta=50,
                             kind="inward", ref_type="purchase", ref_id=grn.id, rate=400.0,
                             balance_after=40, created_at=at(TODAY, 1)))
+db.add(models.Document(filename="AMS-1029.jpg", stored_path="x/AMS-1029.jpg",
+                       supplier_id=supplier.id, warehouse_id=main_wh.id,
+                       status="needs_review", uploaded_at=at(TODAY, 1)))
+db.add(models.LREntry(warehouse_id=main_wh.id, lr_entry_no="LRE-00001", lr_no="GT-4471",
+                      supplier_name="AMS Garments", transport="Golden Transport",
+                      qty=120, amount=21000.0, created_at=at(TODAY, 1)))
 pay = models.Payment(receipt_no="ESP00001", supplier_id=supplier.id, date=TODAY.isoformat(),
                      mode="NEFT", paid_amount=10000.0, gross_amount=21000.0,
                      created_at=at(TODAY, 2))
@@ -357,6 +363,44 @@ eq("…and the warehouse's own changes",
 has("the headline says the day in one line", ov["headline"], "store sales")
 
 # ===========================================================================
+head("…and the drill-down: one warehouse, its stores, its tills")
+pl = ov["places"]
+eq("every warehouse has a row", sorted(w["name"] for w in pl["warehouses"]),
+   ["Erode", "Karur", "Main Warehouse"])
+main = [w for w in pl["warehouses"] if w["name"] == "Main Warehouse"][0]
+eq("carrying what it holds and what its shops took",
+   (main["value"], main["stores"], main["sales"], main["bills"], main["purchases"]),
+   (16000.0, 1, 2425.0, 2, 21000.0))
+eq("a warehouse with no stores still reads zero rather than going missing",
+   [w["sales"] for w in pl["warehouses"] if w["name"] == "Erode"], [0.0])
+eq("every store has a row", [s["name"] for s in pl["stores"]], ["TAQUA TIRUPUR"])
+store_row = pl["stores"][0]
+eq("with its tills, bills, takings and returns",
+   (store_row["terminals"], store_row["bills"], store_row["sales"], store_row["returns"]),
+   (2, 2, 2425.0, 950.0))
+eq("and it is matched to the till's own branch name", store_row["matched"], True)
+eq("both counters are listed", len(pl["counters"]), 2)
+eq("the busiest first", pl["counters"][0]["label"].startswith("Counter 1"), True)
+eq("with who billed them", sorted(c["label"] for c in pl["cashiers"]),
+   ["Meena Selvam", "Ravi Kumar"])
+eq("the top sellers carry a SKU, so a row can be tracked",
+   sorted(p["sku"] for p in ov["top_products"]), ["ESSA-00001", "ESSA-00002"])
+
+scoped = client.get("/api/command/overview", headers=head_boss,
+                    params={"warehouse_id": erode.id}).json()
+eq("scoping to Erode narrows the stock to Erode's", scoped["kpis"]["stock_value"]["value"], 3000.0)
+eq("…and its GRNs to none", scoped["kpis"]["purchases"]["grns"], 0)
+eq("…and its stores' takings to nothing, because it supplies none",
+   scoped["kpis"]["sales"]["value"], 0.0)
+eq("the screen says which building it is showing", scoped["scope"]["warehouse"], "Erode")
+eq("but the picker still lists every one, or there is no way back",
+   sorted(w["name"] for w in scoped["places"]["picker"]),
+   ["Erode", "Karur", "Main Warehouse"])
+eq("an admin cannot scope to a warehouse they are not allotted",
+   client.get("/api/command/overview", headers=head_k,
+              params={"warehouse_id": main_wh.id}).status_code, 403)
+
+# ===========================================================================
 head("ask anything — the questions from the brief, in keyword mode")
 
 
@@ -405,6 +449,22 @@ has("with the total and the supplier", a["line"], "₹11,000")
 a = ask("How many products were received through GRN today?")
 eq("routed to receipts", a["intent"], "purchases")
 has("units, products and GRNs", a["line"], "50 units of 1 product on 1 GRN")
+
+head("…and the ones asked out loud at the counter")
+a = ask("today total invoices")
+eq("routed to supplier invoices, not to till bills", a["intent"], "invoices")
+has("counted", a["line"], "1 supplier invoice")
+has("…with the tills' own invoices said beside it", a["line"], "customer invoice")
+
+a = ask("Today Total LR entries")
+eq("routed to the transport register", a["intent"], "lr")
+has("counted", a["line"], "1 consignment")
+has("with the pieces on it", a["line"], "120 pieces")
+has("and what is not in yet", a["line"], "not received")
+
+a = ask("Today Total Billing")
+eq("billing is the tills", a["intent"], "sales")
+has("and answers in money", a["line"], "₹1,475")
 
 a = ask("Which warehouse has the highest stock value?")
 eq("routed to a stock ranking", a["intent"], "stock_rank")

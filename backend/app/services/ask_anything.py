@@ -49,6 +49,8 @@ INTENTS = {
     "discounts": "Discounts given on store bills in a period — the total, and who (which cashier) gave the most.",
     "profit": "Profit / gross margin on store sales in a period.",
     "purchases": "Goods received through GRN in a period — how many GRNs, how many units and products, and their value. 'How many products were received through GRN today'.",
+    "invoices": "Supplier invoices entered in a period — how many came in, how many are still waiting for review, how many were confirmed and posted. 'Today's total invoices'. (Customer bills at the tills are `sales`.)",
+    "lr": "LR / transport entries in a period — consignments booked into the register: how many, how many pieces, their value, and how many have not been received yet. 'Today's total LR entries'.",
     "payments": "Money paid to suppliers in a period.",
     "pending_payments": "Supplier bills still unpaid — how much is outstanding and to whom. 'Pending supplier payments'.",
     "pending_grns": "GRNs not yet posted and supplier invoices still waiting for review.",
@@ -176,6 +178,13 @@ def _offline(db, question):
     elif _has(t, (" grn", "purchase", "bought", "received", " receipt", " inward", " buy ",
                   "கொள்முதல்", "வாங்கிய")):
         intent = "purchases"
+    # "LR" as a word, not as two letters inside another one — `clr`, `colour` and
+    # half the alphabet contain them.
+    elif re.search(r"\blrs?\b|lorry receipt|consignment|transport entr|docket|"
+                   r"போக்குவரத்து|லாரி", t):
+        intent = "lr"
+    elif _has(t, ("invoice", "bill entry", "document", "விலைப்பட்டியல்")):
+        intent = "invoices"
     elif " how many " in t and _has(t, ("warehouses", "stores", "shops", "branches", "counters",
                                         "tills", " pos", "users", "people", "accounts")) \
             and not _has(t, _SALES + _STOCK):
@@ -639,6 +648,72 @@ def a_purchases(db, read, sc, per):
                 {"tab": "purchases"})
 
 
+def a_invoices(db, read, sc, per):
+    """Supplier invoices entered — and, because the word means two things in a
+    shop, what the tills billed said beside it rather than instead of it."""
+    q = db.query(models.Document).filter(models.Document.uploaded_at >= per["start"],
+                                         models.Document.uploaded_at < per["end"])
+    if sc["wh_ids"]:
+        q = q.filter(models.Document.warehouse_id.in_(sc["wh_ids"]))
+    rows = q.order_by(models.Document.uploaded_at.desc()).all()
+    by_status = {}
+    for d in rows:
+        by_status[d.status] = by_status.get(d.status, 0) + 1
+    waiting = by_status.get("needs_review", 0) + by_status.get("extracted", 0) \
+        + by_status.get("uploaded", 0)
+    done = by_status.get("confirmed", 0) + by_status.get("posted", 0)
+    title = _titled(per["label"], "Invoice Entries")
+    if sc["warehouse"]:
+        title += f" at {sc['warehouse']['name']}"
+    # Document carries a warehouse_id and no relationship to go with it, so the
+    # names are looked up once rather than per row.
+    wh_names = {w.id: w.name for w in db.query(models.Warehouse).all()}
+    sales = pos_insights.totals(per["start"], per["end"], sc["at"]) if pos_insights.available() else {}
+    line = (f"{title}: {plural(len(rows), 'supplier invoice')}"
+            + (f" — {waiting} still to review, {done} confirmed." if rows else " — none came in."))
+    if sales.get("bills"):
+        line += (f" The tills billed {plural(sales['bills'], 'customer invoice')} "
+                 f"worth {inr(sales['net'])}.")
+    return _out(title, fmt_qty(len(rows)), line,
+                f"{title}: {plural(len(rows), 'supplier invoice')}, {waiting} still to review.",
+                [("To review", fmt_qty(waiting)), ("Confirmed or posted", fmt_qty(done)),
+                 ("Customer bills", fmt_qty(sales.get("bills", 0)) if sales else None)],
+                ["Invoice", "Supplier", "Status", "Warehouse", "Entered"],
+                [{"Invoice": d.filename, "Supplier": d.supplier.name if d.supplier else "—",
+                  "Status": d.status, "Warehouse": wh_names.get(d.warehouse_id, "—"),
+                  "Entered": _local_time(d.uploaded_at)} for d in rows],
+                "Counted by when the invoice was ENTERED here, not by the date the "
+                "supplier printed on it.", {"tab": "documents"})
+
+
+def a_lr(db, read, sc, per):
+    """Consignments booked into the transport register."""
+    q = db.query(models.LREntry).filter(models.LREntry.created_at >= per["start"],
+                                        models.LREntry.created_at < per["end"])
+    if sc["wh_ids"]:
+        q = q.filter(models.LREntry.warehouse_id.in_(sc["wh_ids"]))
+    rows = q.order_by(models.LREntry.id.desc()).all()
+    pieces = round(sum(float(e.qty or 0) for e in rows), 3)
+    value = round(sum(float(e.amount or 0) for e in rows), 2)
+    unreceived = [e for e in rows if not (e.received_by or "").strip()]
+    title = _titled(per["label"], "LR Entries")
+    if sc["warehouse"]:
+        title += f" at {sc['warehouse']['name']}"
+    line = (f"{title}: {plural(len(rows), 'consignment')}"
+            + (f" — {fmt_qty(pieces)} pieces worth {inr(value)}"
+               + (f"; {len(unreceived)} not received yet." if unreceived else ", all received.")
+               if rows else " — nothing was booked in."))
+    return _out(title, fmt_qty(len(rows)), line,
+                f"{title}: {plural(len(rows), 'consignment')}, {fmt_qty(pieces)} pieces.",
+                [("Pieces", fmt_qty(pieces)), ("Goods value", inr(value)),
+                 ("Not received", fmt_qty(len(unreceived)))],
+                ["LR no", "Entry no", "Supplier", "Transport", "Pieces", "Value", "Received"],
+                [{"LR no": e.lr_no, "Entry no": e.lr_entry_no, "Supplier": e.supplier_name,
+                  "Transport": e.transport, "Pieces": e.qty, "Value": e.amount,
+                  "Received": e.received_by or "—"} for e in rows],
+                None, {"tab": "lr"})
+
+
 def a_payments(db, read, sc, per):
     pays = cc.payments_between(db, per["start"], per["end"])
     rows = pays["rows"]
@@ -938,7 +1013,8 @@ def a_activity(db, read, sc, per, role, allowed):
 # ---------------------------------------------------------------------------
 _DEFAULT_PERIOD = {"sales": "today", "sales_rank": "today", "discounts": "today",
                    "profit": "today", "purchases": "today", "payments": "today",
-                   "returns": "today", "transfers": "today", "activity": "today"}
+                   "returns": "today", "transfers": "today", "activity": "today",
+                   "invoices": "today", "lr": "today"}
 
 
 def ask(db, question, role="admin", allowed=None):
@@ -985,6 +1061,7 @@ def ask(db, question, role="admin", allowed=None):
     builders = {
         "sales": a_sales, "sales_rank": a_sales_rank, "discounts": a_discounts,
         "profit": a_profit, "purchases": a_purchases, "payments": a_payments,
+        "invoices": a_invoices, "lr": a_lr,
         "pending_payments": a_pending_payments, "pending_grns": a_pending_grns,
         "returns": a_returns, "stock": a_stock, "stock_rank": a_stock_rank,
         "low_stock": a_low_stock, "dead_stock": a_dead_stock, "transfers": a_transfers,
@@ -1013,6 +1090,8 @@ def examples():
     """Questions that work — the ones from the brief, and the shape of each answer."""
     return [
         {"q": "Today's total sales", "note": "one line, every store"},
+        {"q": "Today's total invoices", "note": "supplier invoices entered"},
+        {"q": "Today's total LR entries", "note": "consignments booked in"},
         {"q": "Which floor has the highest sales?", "note": "ranked"},
         {"q": "How much stock is available in Ground Floor?", "note": "store floor"},
         {"q": "Show sales of ladies shirts this month", "note": "by category words"},
