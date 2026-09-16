@@ -480,7 +480,7 @@ function Field({ label, value, onChange, flagged, note, wide, source, date, calc
     <div className={'field' + (flagged ? ' flag' : '') + (source && !flagged ? ' fromlr' : '')
       + (calc ? ' calc' : '')}
       style={wide ? { gridColumn: '1 / -1' } : null}>
-      <label title={calc || undefined}>{label}{calc ? ' Æ’' : ''}</label>
+      <label title={calc || undefined}>{label}{calc ? ' ƒ' : ''}</label>
       {date
         ? <DateField inline value={value} onChange={onChange} />
         : <input value={value ?? ''} title={calc || undefined}
@@ -1075,7 +1075,7 @@ function LineItems({ items, setItems }) {
   //
   // The invoice still has to reconcile against the paper it was read off, so the
   // line TOTALS are shared out rather than copied: six lines each carrying the
-  // whole amount would multiply the bill by six. Î£ qty and Î£ value come out of
+  // whole amount would multiply the bill by six. Σ qty and Σ value come out of
   // this exactly as they went in, which is what makes it safe to do on a
   // document that has already been checked against its image.
   // One line, spread across a list of {size, qty} — the list the operator has in
@@ -1166,7 +1166,7 @@ function LineItems({ items, setItems }) {
       + `Each line's OWN quantity is spread evenly across them, so a count you set `
       + `by hand above applies to line ${i + 1} only.\n`
       + `${targets.size} line(s) become ${targets.size * sizes.length}. `
-      + 'Î£ qty and Î£ value do not move.')) return
+      + 'Σ qty and Σ value do not move.')) return
     setItems(items.flatMap((x, j) => (targets.has(j) ? expandRows(x, evenRows(x, sizes)) : [x])))
     closeRun()
   }
@@ -1289,7 +1289,7 @@ function LineItems({ items, setItems }) {
         <thead><tr><th style={{ minWidth: 34 }} title="Line number on the invoice">#</th>
           {ITEM_COLS.map(([k, l, , w, tip]) =>
           <th key={k} style={{ minWidth: w }} title={tip}
-            className={ITEM_CALC.has(k) ? 'calc' : undefined}>{l}{tip ? ' Æ’' : ''}</th>)}<th></th></tr>
+            className={ITEM_CALC.has(k) ? 'calc' : undefined}>{l}{tip ? ' ƒ' : ''}</th>)}<th></th></tr>
           {/* Under the headings, not in a toolbar above the table: the control
               belongs to the column it fills, and aligned under it there is
               nothing to explain about which is which. */}
@@ -1502,10 +1502,10 @@ function LineItems({ items, setItems }) {
       ))}
       <div className="items-foot">
         <span>{items.length} lines</span>
-        <span>Î£ qty <b>{qtySum.toLocaleString('en-IN')}</b></span>
+        <span>Σ qty <b>{qtySum.toLocaleString('en-IN')}</b></span>
         {discSum > 0 && <span title="Σ ((MRP − Rate) × Qty) — the whole invoice's gap between printed price and cost">
           Σ MRP − cost <b>{money(discSum)}</b></span>}
-        <span>Î£ value <b>{money(amtSum)}</b></span>
+        <span>Σ value <b>{money(amtSum)}</b></span>
         {/* A twenty-four-line invoice that is really six garments in four sizes
             each is six things to check, not twenty-four — but only if they can be
             put away all at once. One line at a time is not an offer anybody
@@ -2138,8 +2138,8 @@ function Review({ docId, onSaved, onCreateGrn, toast }) {
               <div>
                 <h5>Totals</h5>
                 <div className="grid">
-                  {f('totals.total_qty', 'Total Qty', { calc: 'Î£ of the Qty column.' })}
-                  {f('totals.sub_total', 'Sub Total', { calc: 'Î£ of the Amount column.' })}
+                  {f('totals.total_qty', 'Total Qty', { calc: 'Σ of the Qty column.' })}
+                  {f('totals.sub_total', 'Sub Total', { calc: 'Σ of the Amount column.' })}
                   {f('totals.taxable_total', 'Taxable Total', { calc: 'Σ of the Taxable column — what the tax rates are charged on.' })}
                   {f('totals.tax_total', 'Tax Total', { calc: 'CGST + SGST + IGST.' })}
                   {f('totals.grand_total', 'Grand Total', { calc: 'Taxable + tax + charges + freight − special discount + round off.' })}
@@ -2821,7 +2821,7 @@ function Purchases({ selId, setSelId, toast }) {
                   <th style={{ textAlign: 'right', minWidth: 78 }}
                     title="What the supplier printed as the retail price">MRP</th>
                   <th style={{ textAlign: 'right', minWidth: 88 }} className="calc"
-                    title="Off MRP. Type a sale price instead and this fills itself.">Discount % Æ’</th>
+                    title="Off MRP. Type a sale price instead and this fills itself.">Discount % ƒ</th>
                   <th style={{ textAlign: 'right', minWidth: 88 }} className="calc"
                     title="MRP less the discount — e.g. 995 − 20% = 796. Type it and the discount % follows.">Sale price ƒ</th>
                   <th>Match</th>
@@ -4480,7 +4480,7 @@ function StockOutward({ toast }) {
               </table>
               </div>
               <div className="items-foot"><span>{detail.lines.length} items</span>
-                <span>Î£ qty <b>{detail.total_qty}</b></span>
+                <span>Σ qty <b>{detail.total_qty}</b></span>
                 {detail.status === 'received' && <span>accepted <b>{detail.accepted_qty}</b></span>}
                 {detail.shortfall > 0 && <span style={{ color: 'var(--danger)' }}>short <b>{detail.shortfall}</b></span>}
               </div>
@@ -5079,7 +5079,7 @@ const SpeechRec = typeof window !== 'undefined' &&
 //: to nonsense. So this is a choice someone makes, and it is remembered.
 const VOICE_LANGS = [
   ['en-IN', 'EN', 'English — Indian English'],
-  ['ta-IN', 'à®¤à®®à®¿à®´à¯', 'Tamil'],
+  ['ta-IN', 'தமிழ்', 'Tamil'],
 ]
 
 const voiceBlockedBecause = () => {
@@ -5841,7 +5841,7 @@ function LREntryForm({ editing, opts, lists, onDone, onCancel, toast, reloadOpts
             <option value="">Type</option>
             {(opts.attachment_type || []).map((t) => <option key={t} value={t}>{t}</option>)}
           </select></div>
-        <button className="btn" onClick={() => fileRef.current?.click()}>ï¼‹ Add file</button>
+        <button className="btn" onClick={() => fileRef.current?.click()}>＋ Add file</button>
         <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={queueFile} />
       </div>
       {(atts.length > 0 || pendingFiles.length > 0) && (
@@ -8482,7 +8482,7 @@ function FieldMic({ f, master, onValue, toast }) {
   const heardRef = useRef('')
   const take = async (text, lang) => {
     if (isEnglish(lang)) { onValue(coerceSpoken(f, text)); return }
-    // Tamil: the box would otherwise end up holding "à®ªà®¿à®²à¯à®²à¯‹", and nobody finds
+    // Tamil: the box would otherwise end up holding "பில்லோ", and nobody finds
     // that product again by typing "pillow"
     heardRef.current = text
     setBusy(true)
@@ -10914,8 +10914,8 @@ function DsRegister({ toast, status, setStatus, onChanged }) {
             <Pager {...page} noun="line" />
             <div className="items-foot">
               <span>{rows.length} line(s) · Σ {data.totals.qty} pcs</span>
-              <span>Î£ stock value <b>{rupees(data.totals.stock_value)}</b></span>
-              <span>Î£ expected <b>{rupees(data.totals.expected_realisation)}</b></span>
+              <span>Σ stock value <b>{rupees(data.totals.stock_value)}</b></span>
+              <span>Σ expected <b>{rupees(data.totals.expected_realisation)}</b></span>
               <button className="btn primary" style={{ marginLeft: 'auto' }}
                 disabled={!chosen.length} onClick={() => setAdding(true)}
                 title={chosen.length ? 'Put these lines on a clearance worksheet' : 'Select some lines first'}>
@@ -13293,8 +13293,11 @@ function AskAnything({ go, big, placeholder }) {
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
     const csv = [cols.map(esc).join(','),
       ...(ans.rows || []).map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n')
-    // The BOM is what makes Excel read ₹ and Tamil names as UTF-8 rather than mojibake.
-    const url = URL.createObjectURL(new Blob(['ï»¿' + csv], { type: 'text/csv;charset=utf-8' }))
+    // The byte-order mark is what makes Excel read ₹ and Tamil names as UTF-8
+    // rather than mojibake. Written as an escape, not as the character: a real
+    // U+FEFF in source is invisible, and the next editor to touch this line has
+    // no way to see what it would be deleting.
+    const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
     const el = document.createElement('a')
     el.href = url
     el.download = `${(ans.title || 'answer').replace(/[^\w]+/g, '_').toLowerCase()}.csv`
@@ -14005,7 +14008,7 @@ function CentralDashboard({ toast, go, onEnter }) {
               </div>
               <div className="items-foot">
                 <span>{rows.length} warehouse(s)</span>
-                <span>Î£ qty <b>{fmtQty(sum(rows, (r) => r.qty))}</b></span>
+                <span>Σ qty <b>{fmtQty(sum(rows, (r) => r.qty))}</b></span>
                 <span>Σ value <b>₹ {money(sum(rows, (r) => r.value))}</b></span>
                 <span className="spacer" />
                 <button className="btn" disabled={busy} onClick={rebuild}
@@ -14052,7 +14055,7 @@ function CentralDashboard({ toast, go, onEnter }) {
               </div>
               <div className="items-foot">
                 <span>{stores.length} store(s)</span>
-                <span>Î£ tills <b>{sum(stores, (s) => s.terminals)}</b></span>
+                <span>Σ tills <b>{sum(stores, (s) => s.terminals)}</b></span>
               </div>
             </Section>
 
