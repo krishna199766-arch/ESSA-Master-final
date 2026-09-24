@@ -27,7 +27,7 @@ building without anybody buying them; counting that as life would hide a line
 that was rejected precisely because it wasn't selling.
 """
 import datetime as dt
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from .. import models, runtime
 from . import pos_sales, stock_view
@@ -160,23 +160,26 @@ def _days_since(iso, today):
         return None
 
 
-def _movement_index(db):
+def _movement_index(db, only=None):
     """Per product: when stock last went OUT on a dispatch, and last came IN.
 
     Two grouped queries rather than a walk of the ledger — the ledger is
     append-only and grows without limit, and this runs on every open of the
-    register."""
+    register. `only` (a select of product ids) limits it to those products: the
+    register reads the few thousand that hold stock, and indexing every product
+    ever moved sent back a row for each of hundreds of thousands."""
+    SM = models.StockMovement
     out = {}
-    dispatched = db.query(models.StockMovement.product_id,
-                          func.max(models.StockMovement.created_at)) \
-        .filter(models.StockMovement.ref_type == "outward") \
-        .group_by(models.StockMovement.product_id).all()
-    for pid, when in dispatched:
+    dispatched = db.query(SM.product_id, func.max(SM.created_at)) \
+        .filter(SM.ref_type == "outward")
+    received = db.query(SM.product_id, func.max(SM.created_at)) \
+        .filter(SM.kind == "inward")
+    if only is not None:
+        dispatched = dispatched.filter(SM.product_id.in_(only))
+        received = received.filter(SM.product_id.in_(only))
+    for pid, when in dispatched.group_by(SM.product_id).all():
         out.setdefault(pid, {})["dispatched"] = _iso(when)
-    received = db.query(models.StockMovement.product_id,
-                        func.max(models.StockMovement.created_at)) \
-        .filter(models.StockMovement.kind == "inward") \
-        .group_by(models.StockMovement.product_id).all()
+    received = received.group_by(SM.product_id).all()
     for pid, when in received:
         out.setdefault(pid, {})["received"] = _iso(when)
     return out
@@ -206,9 +209,12 @@ def product_rows(db, rules=None, today=None, include_healthy=True):
     """
     rules = rules or get_rules()
     today = today or dt.date.today()
-    sold = pos_sales.last_sold_index()
+    # One read of the till: last_sold_index() is this same query filtered, and
+    # calling both read every invoice line in the shop twice.
     sales = pos_sales.sales_by_product()
-    moves = _movement_index(db)
+    sold = {pid: row["last_sold"] for pid, row in sales.items() if row.get("last_sold")}
+    stocked = select(models.Product.id).where(models.Product.stock_qty > 0)
+    moves = _movement_index(db, only=stocked)
 
     rows = []
     products = db.query(models.Product).filter(models.Product.stock_qty > 0).all()
@@ -479,8 +485,11 @@ def cash_impact(locked, expected, rules=None):
 
 # ---------------------------------------------------------------- alerts -----
 
-def alerts(db):
+def alerts(db, with_pos_status=True):
     """The three warnings, in the order they should be acted on.
+
+    `with_pos_status=False` skips the till summary (a full read of the shop's
+    invoices) for a caller that only wants the bands — the notification bell.
 
     Three levels rather than one 90-day event, because the useful moment is
     before the line goes dead: at 60 days a markdown of 10% might still move it,
@@ -510,7 +519,7 @@ def alerts(db):
             "expected_realisation": round(sum(r["expected_realisation"] for r in band), 2),
         })
     return {"alerts": levels, "checked_on": dt.date.today().isoformat(),
-            "pos": pos_sales.status()}
+            "pos": pos_sales.status() if with_pos_status else None}
 
 
 # ------------------------------------------------------------- campaigns -----

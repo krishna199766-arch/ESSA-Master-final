@@ -46,5 +46,7 @@ if "%1"=="--reset" (
 :serve
 
 echo.
-echo ==^> Serving on http://localhost:8000/   (Ctrl-C to stop)
+REM 127.0.0.1, not "localhost": Windows tries localhost as IPv6 first, uvicorn
+REM listens on IPv4 only, and every request waited ~2 s for the fallback.
+echo ==^> Serving on http://127.0.0.1:8000/   (Ctrl-C to stop)
 "%PY%" -m uvicorn app.main:app --host 0.0.0.0 --port 8000

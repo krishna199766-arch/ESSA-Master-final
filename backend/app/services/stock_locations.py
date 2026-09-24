@@ -41,6 +41,7 @@ garment on two systems' shelves and double the company's stock on hand.
 """
 import datetime as dt
 
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -357,17 +358,17 @@ def warehouse_totals(db: Session, warehouse_ids=None) -> list:
     invisible until someone wonders where it went.
     """
     wanted = set(warehouse_ids) if warehouse_ids else None
-    rows = db.query(models.StockBalance).all()
-    agg = {}
-    for r in rows:
-        if wanted is not None and r.warehouse_id not in wanted:
-            continue
-        qty = float(r.qty or 0)
-        a = agg.setdefault(r.warehouse_id, {"qty": 0.0, "value": 0.0, "items": 0})
-        a["qty"] += qty
-        a["value"] += qty * float(r.avg_cost or 0)
-        if qty > TOLERANCE:
-            a["items"] += 1
+    # Summed in the database, one row per warehouse. Loading every balance row
+    # to add them up here was hundreds of thousands of objects on a full store.
+    SB = models.StockBalance
+    qty = func.coalesce(SB.qty, 0)
+    q = db.query(SB.warehouse_id, func.sum(qty),
+                 func.sum(qty * func.coalesce(SB.avg_cost, 0)),
+                 func.sum(case((qty > TOLERANCE, 1), else_=0)))
+    if wanted is not None:
+        q = q.filter(SB.warehouse_id.in_(list(wanted)))
+    agg = {wid: {"qty": float(tq or 0), "value": float(tv or 0), "items": int(n or 0)}
+           for wid, tq, tv, n in q.group_by(SB.warehouse_id).all()}
 
     # Built from the SAME serialiser every other warehouse payload uses, rather
     # than hand-rolled here. Hand-rolling is what made the dashboard's "Trades

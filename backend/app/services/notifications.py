@@ -21,6 +21,8 @@ review" trains people to skim past it, and then they skim past the one that says
 eleven.
 """
 import datetime as dt
+import threading
+import time
 
 from .. import models
 from . import payments as pay_svc
@@ -54,7 +56,7 @@ def _money(v):
 
 def _dead_bands(db, ctx):
     if "dead_bands" not in ctx:
-        ctx["dead_bands"] = ds_svc.alerts(db)["alerts"]
+        ctx["dead_bands"] = ds_svc.alerts(db, with_pos_status=False)["alerts"]
     return ctx["dead_bands"]
 
 
@@ -226,6 +228,69 @@ def _age(since, now=None):
     return "just now"
 
 
+#: How long one evaluation of the rules is reused. The rules are the expensive
+#: half — dead stock walks every product and reads the till, overdue walks every
+#: pending bill — and on the full store (400k products, millions of movements)
+#: one pass takes many seconds. The header polls the badge and every screen asks
+#: again, so evaluated per request the bell alone kept the server busy. Queues
+#: move over hours, not seconds; two minutes behind is still an honest count.
+#: Only the conditions are cached: read/mute state is read fresh every time, so
+#: acknowledging a notice clears it at once.
+CONDITIONS_TTL = 120
+_conditions_cache = {"at": 0.0, "value": None, "refreshing": False}
+_conditions_lock = threading.Lock()
+
+
+def _evaluate(db):
+    ctx = {}                      # scratch shared by this pass; see _dead_bands
+    out = []
+    for key, module, build in RULES:
+        try:
+            out.append((key, module, build(db, ctx)))
+        except Exception:
+            # one rule failing is one queue unreported, not a dead bell — the
+            # centre exists to carry the other twelve. Roll back so the failed
+            # statement does not poison the rest of this session.
+            db.rollback()
+    return out
+
+
+def _refresh_in_background():
+    """Re-evaluate on a thread of its own, with its own session, so the request
+    that noticed the expiry is answered from the previous pass immediately."""
+    from ..database import SessionLocal
+
+    def run():
+        db = SessionLocal()
+        try:
+            value = _evaluate(db)
+            _conditions_cache.update(value=value, at=time.monotonic())
+        except Exception:
+            pass                    # keep serving the last good pass; retry next expiry
+        finally:
+            db.close()
+            _conditions_cache["refreshing"] = False
+
+    threading.Thread(target=run, name="notifications-refresh", daemon=True).start()
+
+
+def _conditions(db):
+    """[(key, module, notice-or-None)], at most about CONDITIONS_TTL seconds old.
+
+    Only the very first pass is computed while a request waits; the lock makes a
+    burst of requests on that cold cache share ONE evaluation. After that an
+    expired pass is still served, and a single background refresh replaces it."""
+    c = _conditions_cache
+    with _conditions_lock:
+        if c["value"] is None:
+            c["value"] = _evaluate(db)
+            c["at"] = time.monotonic()
+        elif time.monotonic() - c["at"] > CONDITIONS_TTL and not c["refreshing"]:
+            c["refreshing"] = True
+            _refresh_in_background()
+        return c["value"]
+
+
 def collect(db, include_muted=False):
     """Every open queue, newest state, with what has been read of it.
 
@@ -233,15 +298,8 @@ def collect(db, include_muted=False):
     "waiting 6 days" is answerable later. That is the only write, and it is the
     difference between a list of counts and a list somebody can prioritise."""
     now = dt.datetime.utcnow()
-    ctx = {}                      # scratch shared by this pass; see _dead_bands
     out = []
-    for key, module, build in RULES:
-        try:
-            notice = build(db, ctx)
-        except Exception:
-            # one rule failing is one queue unreported, not a dead bell — the
-            # centre exists to carry the other twelve
-            continue
+    for key, module, notice in _conditions(db):
         st = _state(db, key)
         if notice is None:
             # the queue cleared: forget what was read, so the next occurrence is

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from ..database import get_db
 from .. import models
@@ -67,7 +68,36 @@ def _line_out(l, db: Session):
     }
 
 
-def _out(o, db: Session = None, with_lines=False):
+def _totals(o):
+    """(line_count, total_qty, accepted_qty, shortfall) off the note's own lines —
+    the model's properties, for one note."""
+    return len(o.lines), o.total_qty, o.total_accepted, o.shortfall
+
+
+def _totals_by_note(db: Session, q):
+    """The same four figures for every note `q` selects, in ONE grouped query.
+
+    The list used to read them off each note's `lines`, which is a lazy load per
+    note: seventeen thousand round trips and 450k line objects to print four
+    numbers a row. The arithmetic mirrors StockOutward.total_qty/total_accepted/
+    shortfall exactly — accepted falls back to qty, and only a received note has
+    accepted anything."""
+    L = models.StockOutwardLine
+    ids = q.with_entities(models.StockOutward.id).subquery()
+    rows = (db.query(L.outward_id, func.count(L.id), func.sum(func.coalesce(L.qty, 0)),
+                     func.sum(func.coalesce(L.accepted_qty, L.qty, 0)))
+            .filter(L.outward_id.in_(select(ids.c.id))).group_by(L.outward_id).all())
+    return {oid: (n, float(sent or 0), float(acc or 0)) for oid, n, sent, acc in rows}
+
+
+def _out(o, db: Session = None, with_lines=False, totals=None):
+    if totals is None:
+        n, sent, accepted, short = _totals(o)
+    else:
+        n, sent, acc = totals.get(o.id, (0, 0.0, 0.0))
+        received = o.status == "received"
+        accepted = acc if received else 0.0
+        short = round(sent - acc, 3) if received else 0.0
     d = {"id": o.id, "code": o.code, "date": o.date, "to_destination": o.to_destination,
          "from_company": o.from_company, "from_location": o.from_location,
          "from_warehouse_id": o.from_warehouse_id,
@@ -83,8 +113,8 @@ def _out(o, db: Session = None, with_lines=False):
          "is_transfer": o.is_transfer,
          "packed_by": o.packed_by, "received_by": o.received_by,
          "received_date": o.received_date, "status": o.status,
-         "total_qty": o.total_qty, "accepted_qty": o.total_accepted,
-         "shortfall": o.shortfall, "line_count": len(o.lines),
+         "total_qty": sent, "accepted_qty": accepted,
+         "shortfall": short, "line_count": n,
          "created_at": o.created_at.isoformat() if o.created_at else None,
          "posted_at": o.posted_at.isoformat() if o.posted_at else None,
          "received_at": o.received_at.isoformat() if o.received_at else None}
@@ -125,7 +155,8 @@ def list_outwards(status: str = "all", kind: str = "all",
     # filtering to the source alone is what makes an arriving transfer invisible
     # at the branch that has to count it in.
     q = scope.outwards(q, warehouse_id)
-    return [_out(o) for o in q.order_by(models.StockOutward.id.desc()).all()]
+    totals = _totals_by_note(db, q)
+    return [_out(o, totals=totals) for o in q.order_by(models.StockOutward.id.desc()).all()]
 
 
 @router.post("")

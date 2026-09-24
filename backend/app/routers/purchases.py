@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import case, func, select
+from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
 from .. import models
 from ..services import inventory as inv
@@ -223,7 +223,10 @@ def list_purchases(db: Session = Depends(get_db),
     here has started, and it would otherwise be on nobody's screen until they
     picked a building — which is the moment they most need to find it again."""
     q = scope.purchases(db.query(models.Purchase), wid)
-    ps = q.order_by(models.Purchase.id.desc()).all()
+    # Supplier and warehouse come in the same read. Lazily, each distinct one is
+    # its own round trip — over four thousand suppliers, half a minute on the LAN.
+    ps = (q.options(joinedload(models.Purchase.supplier), joinedload(models.Purchase.warehouse))
+           .order_by(models.Purchase.id.desc()).all())
     return _purchase_list_out(db, q, ps)
 
 
@@ -239,29 +242,39 @@ def _purchase_list_out(db: Session, q, ps):
     ids = q.with_entities(models.Purchase.id).subquery()
     line_ids = db.query(PL.id).filter(PL.purchase_id.in_(select(ids.c.id))).subquery()
 
-    splits = defaultdict(list)                      # line id → [(product id, detailed)]
-    for line_id, product_id, detailed in (
-            db.query(S.line_id, S.product_id, P.detailed)
-              .outerjoin(P, P.id == S.product_id)
-              .filter(S.line_id.in_(select(line_ids.c.id)))):
-        splits[line_id].append((product_id, detailed))
+    # Counted in the database, one row back per GRN. Summed here instead, this
+    # pulled every line of every receipt over the wire — 1.2M rows on the live
+    # store — to print four numbers a row.
+    #
+    # Per line: a SPLIT line counts one holder per variant (new = variants with no
+    # product yet); an unsplit line is its own single holder. Pending = holders
+    # with a product that has not been detailed. `detailed` NULL counts as not.
+    def one_if(cond):
+        return case((cond, 1), else_=0)
 
+    undetailed = func.coalesce(P.detailed, False) == False       # noqa: E712
+    sp = (db.query(S.line_id.label("line_id"),
+                   func.count().label("n"),
+                   func.sum(one_if(S.product_id.is_(None))).label("new_n"),
+                   func.sum(one_if(S.product_id.isnot(None) & undetailed)).label("pend"))
+            .outerjoin(P, P.id == S.product_id)
+            .filter(S.line_id.in_(select(line_ids.c.id)))
+            .group_by(S.line_id).subquery())
+    split = sp.c.line_id.isnot(None)
     agg = defaultdict(lambda: {"line_count": 0, "new_products": 0, "items": 0, "pending": 0})
-    for line_id, purchase_id, is_new, product_id, detailed in (
-            db.query(PL.id, PL.purchase_id, PL.is_new_product, PL.product_id, P.detailed)
+    for purchase_id, n, new_n, items, pend in (
+            db.query(PL.purchase_id, func.count(PL.id),
+                     func.sum(case((split, sp.c.new_n),
+                                   else_=one_if(PL.is_new_product == True))),  # noqa: E712
+                     func.sum(func.coalesce(sp.c.n, 1)),
+                     func.sum(case((split, sp.c.pend),
+                                   else_=one_if(PL.product_id.isnot(None) & undetailed))))
               .outerjoin(P, P.id == PL.product_id)
-              .filter(PL.purchase_id.in_(select(ids.c.id)))):
-        a = agg[purchase_id]
-        a["line_count"] += 1
-        rows = splits.get(line_id)
-        if rows:                                    # a split line: one holder per variant
-            a["new_products"] += sum(1 for pid, _ in rows if not pid)
-            holders = rows
-        else:
-            a["new_products"] += 1 if is_new else 0
-            holders = [(product_id, detailed)]
-        a["items"] += len(holders)
-        a["pending"] += sum(1 for pid, det in holders if pid and not det)
+              .outerjoin(sp, sp.c.line_id == PL.id)
+              .filter(PL.purchase_id.in_(select(ids.c.id)))
+              .group_by(PL.purchase_id)):
+        agg[purchase_id] = {"line_count": int(n or 0), "new_products": int(new_n or 0),
+                            "items": int(items or 0), "pending": int(pend or 0)}
 
     shorts = defaultdict(list)                      # purchase id → claimable shortages
     for sh in (db.query(models.GrnShortage)
