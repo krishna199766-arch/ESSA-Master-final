@@ -187,16 +187,21 @@ def product_ids_here(db, warehouse_id, include_zero=False):
 
 
 def products(db, query, warehouse_id, include_zero=True):
-    """Narrow a Product query to what this warehouse has anything to do with."""
-    ids = product_ids_here(db, warehouse_id, include_zero=include_zero)
-    if ids is None:
+    """Narrow a Product query to what this warehouse has anything to do with.
+
+    The same set product_ids_here returns, asked as a subquery rather than read
+    into Python and sent back as a literal IN list — which on a full store was
+    hundreds of thousands of ids in one statement. A warehouse with nothing yet
+    matches nothing, exactly as before: a new warehouse must never show the
+    whole company's stock."""
+    if not warehouse_id:
         return query
-    if not ids:
-        # Nothing here yet. An empty IN () is asked for explicitly rather than
-        # left unfiltered — a new warehouse showing the whole company's stock
-        # would be the exact failure this module exists to prevent.
-        return query.filter(models.Product.id.is_(None))
-    return query.filter(models.Product.id.in_(ids))
+    from sqlalchemy import select
+    SB = models.StockBalance
+    here = select(SB.product_id).where(SB.warehouse_id == warehouse_id)
+    if not include_zero:
+        here = here.where(SB.qty > 0)
+    return query.filter(models.Product.id.in_(here))
 
 
 # ---------------------------------------------------------------------------
