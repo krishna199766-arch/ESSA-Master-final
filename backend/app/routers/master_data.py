@@ -11,6 +11,7 @@ cannot drift apart, because they are the same `req` flag.
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
+from sqlalchemy import String, cast, func, or_
 from sqlalchemy.orm import Session
 from ..database import get_db
 from .. import models
@@ -71,10 +72,8 @@ def _title(d, data):
 @router.get("")
 def list_masters(db: Session = Depends(get_db)):
     """Every master, with how many records each holds — the Masters hub screen."""
-    counts = {}
-    for key, n in db.query(models.MasterRecord.master,
-                           models.MasterRecord.master).all():
-        counts[key] = counts.get(key, 0) + 1
+    counts = dict(db.query(models.MasterRecord.master, func.count(models.MasterRecord.id))
+                  .group_by(models.MasterRecord.master).all())
     out = []
     for m in defs.summary():
         m["count"] = counts.get(m["key"], 0)
@@ -168,13 +167,17 @@ def list_records(key: str, q: str = "", include_inactive: bool = False,
     query = db.query(models.MasterRecord).filter(models.MasterRecord.master == key)
     if not include_inactive:
         query = query.filter(models.MasterRecord.active == True)   # noqa: E712
+    # Searched in the database, BEFORE the limit. Filtering the fetched page in
+    # Python only ever searched the newest `limit` rows, which stops being "the
+    # whole master" once one holds the 220k items brought over from the old system.
+    for word in q.split():
+        like = f"%{word}%"
+        query = query.filter(or_(models.MasterRecord.name.ilike(like),
+                                 models.MasterRecord.code.ilike(like),
+                                 cast(models.MasterRecord.data, String).ilike(like)))
+    total = query.count()
     rows = query.order_by(models.MasterRecord.id.desc()).limit(max(1, min(limit, 2000))).all()
-    if q:
-        ql = q.lower()
-        rows = [r for r in rows
-                if ql in (r.name or "").lower() or ql in (r.code or "").lower()
-                or any(ql in str(v).lower() for v in (r.data or {}).values())]
-    return {"master": key, "label": d["label"], "count": len(rows),
+    return {"master": key, "label": d["label"], "count": len(rows), "total": total,
             "records": [_out(d, r) for r in rows]}
 
 

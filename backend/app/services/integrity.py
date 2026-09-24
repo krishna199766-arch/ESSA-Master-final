@@ -145,6 +145,45 @@ class Context:
         self.history = _movement_count(db)
         self.received = _received_qty(db)
         self._adopted = {}
+        self._units = None          # {product_id: [unit rows by seq]} once preloaded
+        self._countable = {}        # uom → countable, asked once per pass
+
+    def preload_units(self):
+        """Read every piece code once, for a pass over the whole inventory.
+
+        Only the four columns the checks read, as plain rows, ordered as
+        `_adopted_ids` needs them. Without this a whole-inventory scan asked for
+        each product's codes separately — hundreds of thousands of queries on a
+        real catalogue — and loaded every code as a full ORM object besides."""
+        U = models.ProductUnit
+        by = {}
+        for row in self.db.query(U.id, U.product_id, U.purchase_id, U.seq).order_by(
+                U.product_id, U.seq):
+            by.setdefault(row.product_id, []).append(row)
+        self._units = by
+
+    def units_for(self, product_id):
+        """This product's piece codes, ordered by seq."""
+        if self._units is not None:
+            return self._units.get(product_id, [])
+        return self.db.query(models.ProductUnit).filter(
+            models.ProductUnit.product_id == product_id).order_by(
+            models.ProductUnit.seq).all()
+
+    def can_serialise(self, uom, qty):
+        """units.can_serialise, with the unit-type lookup asked once per unit.
+
+        The lookup reads the whole unit-type master, and a scan asks it once per
+        product. The fast form (no db) is used only where it gives the same
+        answer — a unit the built-in list and the master both call countable;
+        anything else takes the exact, database-backed path."""
+        from . import units as unit_svc
+        key = (uom or "PCS").strip().upper()
+        if key not in self._countable:
+            self._countable[key] = unit_svc.is_countable(key, self.db)
+        if self._countable[key] and key in unit_svc.COUNTABLE_UOM:
+            return unit_svc.can_serialise(uom, qty)
+        return unit_svc.can_serialise(uom, qty, self.db)
 
     def product_state(self, product):
         return _state(self.links.get(product.id, set()), self.statuses,
@@ -167,9 +206,7 @@ class Context:
         human reading the list would take to be the original set."""
         if product_id in self._adopted:
             return self._adopted[product_id]
-        rows = self.db.query(models.ProductUnit).filter(
-            models.ProductUnit.product_id == product_id).order_by(
-            models.ProductUnit.seq).all()
+        rows = self.units_for(product_id)
         named_live = sum(1 for u in rows if self.statuses.get(u.purchase_id) == "posted")
         shortfall = int(round(self.received.get(product_id, 0.0))) - named_live
         nameless = [u for u in rows if u.purchase_id is None]
@@ -208,13 +245,12 @@ def product_report(db, product, ctx=None):
     from . import units as unit_svc
     ctx = ctx or Context(db)
     state = ctx.product_state(product)
-    rows = db.query(models.ProductUnit).filter(
-        models.ProductUnit.product_id == product.id).all()
+    rows = ctx.units_for(product.id)
     live = [u for u in rows if ctx.unit_state(u) == POSTED]
     orphaned = [u for u in rows if ctx.unit_state(u) == ORPHAN]
     stock = _round(product.stock_qty)
     expected = ctx.received.get(product.id, 0.0)
-    serialisable, why = unit_svc.can_serialise(product.uom, expected or stock, db)
+    serialisable, why = ctx.can_serialise(product.uom, expected or stock)
 
     d = {
         "product_id": product.id, "sku": product.sku,
@@ -272,6 +308,7 @@ def scan(db):
     Read-only — this is what the Inventory Repair screen shows *before* anyone
     agrees to delete anything."""
     ctx = Context(db)
+    ctx.preload_units()
     products = db.query(models.Product).order_by(models.Product.id).all()
 
     orphan_products, unposted_products, unit_mismatches = [], [], []
@@ -291,7 +328,8 @@ def scan(db):
 
     product_ids = {p.id for p in products}
     orphan_units = []
-    for u in db.query(models.ProductUnit).order_by(models.ProductUnit.id).all():
+    U = models.ProductUnit
+    for u in db.query(U.id, U.code, U.product_id, U.purchase_id).order_by(U.id):
         if u.product_id not in product_ids:
             orphan_units.append({"id": u.id, "code": u.code,
                                  "why": "its product no longer exists"})

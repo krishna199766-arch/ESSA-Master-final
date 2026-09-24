@@ -36,3 +36,9 @@ Textile Retail Shop/textile_shop.db
 # does not, so both are named here rather than relying on that.
 Textile Retail Shop/.venv/
 Textile Retail Shop/.venv-win/
+
+# Copies of a virtualenv moved aside rather than deleted (a venv built on another
+# PC, kept in case it is needed), and the database snapshot taken before a bulk
+# import (tools/import_old_items.py). Both are local-only.
+backend/.venv*/
+backend/data/*.db.before-*

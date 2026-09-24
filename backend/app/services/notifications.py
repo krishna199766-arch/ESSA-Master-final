@@ -78,8 +78,13 @@ def _r_grn_draft(db, ctx):
 
 
 def _r_shortages(db, ctx):
-    shorts = [sh for p in db.query(models.Purchase).all()
-              for l in p.lines for sh in l.shortages
+    # Every shortage on a GRN line, read directly — the same set as walking each
+    # purchase's lines, without loading every line of every GRN to find them.
+    shorts = [sh for sh in db.query(models.GrnShortage)
+                             .join(models.PurchaseLine,
+                                   models.PurchaseLine.id == models.GrnShortage.line_id)
+                             .join(models.Purchase,
+                                   models.Purchase.id == models.PurchaseLine.purchase_id)
               if sh.claimable and short_svc.status_of(db, sh) in ("open", "part-claimed")]
     if not shorts:
         return None

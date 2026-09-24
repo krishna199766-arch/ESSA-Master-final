@@ -637,6 +637,25 @@ _pos_app = None
 _pos_loaded = False
 
 
+@app.on_event("startup")
+def _preload_pos():
+    """On a long-lived process, build the shop BEFORE the first request.
+
+    Loading the shop swaps `sys.modules["app"]` to the shop's package for as long
+    as its syncs run (see pos_mount.load_pos_app), and every warehouse request
+    that does a function-level import in that window fails with "No module named
+    app.services". With a demo catalogue the window is a second; with a real one
+    (hundreds of thousands of products to sync) it is a minute, and the
+    inventory list, the dashboard and the rest fail for whoever is using them.
+
+    Done here, the swap happens while the server is not yet answering anything.
+    Serverless keeps the deferred build (_boot_wanted says no), because there the
+    cold-start cost this deferral exists for is the thing that matters.
+    """
+    if _boot_wanted():
+        _pos_asgi()
+
+
 def _pos_asgi():
     """The mounted shop, built on demand and kept for the life of the instance."""
     global _pos_app, _pos_error, _pos_loaded

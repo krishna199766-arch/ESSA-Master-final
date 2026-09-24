@@ -96,13 +96,19 @@ def movement_by_month(db, months=MONTHS_BACK):
     axis = _month_axis(months)
     inward = dict.fromkeys(axis, 0.0)
     outward = dict.fromkeys(axis, 0.0)
-    for m in db.query(models.StockMovement).all():
-        if not m.created_at:
+    # Only the two columns this reads, and only the months on the axis: the
+    # whole ledger as ORM rows was a million objects to draw twelve bars.
+    start = dt.datetime.strptime(axis[0] + "-01", "%Y-%m-%d") if axis else None
+    rows = db.query(models.StockMovement.created_at, models.StockMovement.qty_delta)
+    if start is not None:
+        rows = rows.filter(models.StockMovement.created_at >= start)
+    for created_at, qty_delta in rows:
+        if not created_at:
             continue
-        k = m.created_at.strftime("%Y-%m")
+        k = created_at.strftime("%Y-%m")
         if k not in inward:
             continue
-        q = float(m.qty_delta or 0)
+        q = float(qty_delta or 0)
         if q >= 0:
             inward[k] += q
         else:
@@ -124,7 +130,10 @@ def stock_by_category(db, top=5):
     from . import integrity
     ctx = integrity.Context(db)
     buckets = defaultdict(float)
-    for p in db.query(models.Product).all():
+    # A product with no stock has no stock value, so it cannot reach a bucket;
+    # asking only the ones that hold stock gives the same ring for a fraction of
+    # the provenance checks.
+    for p in db.query(models.Product).filter(models.Product.stock_qty != 0):
         if ctx.product_state(p) != integrity.POSTED:
             continue
         val = float(p.stock_value or 0)

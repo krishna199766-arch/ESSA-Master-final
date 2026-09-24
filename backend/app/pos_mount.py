@@ -176,7 +176,14 @@ def load_pos_app():
             from app.places import sync_locations
             from app.transfers import sync_transfers
             sync_master_categories()
+            # The warehouse's state as of this sync, recorded so the shop's first
+            # request does not run the very same full sync again through
+            # sync_if_stale (its "last seen" stamp starts empty). Taken BEFORE the
+            # sync, so a change made while it runs still triggers the next one.
+            from app import warehouse_items as _wi
+            seen = _wi._warehouse_signature()
             sync_warehouse_items()
+            _wi._last_signature = seen
             # The branches this warehouse dispatches to are the branches the till
             # sells from, so the shop reads that list rather than keeping a second
             # one. See the shop's app/places.

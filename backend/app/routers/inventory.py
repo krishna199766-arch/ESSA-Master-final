@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from ..database import get_db
 from .. import models
@@ -263,7 +264,8 @@ def product_options(warehouse_id: Optional[int] = None,
 
 
 @router.get("/products")
-def list_products(status: str = "all", q: str = "", db: Session = Depends(get_db),
+def list_products(status: str = "all", q: str = "", held: bool = False,
+                  limit: Optional[int] = None, db: Session = Depends(get_db),
                   wid: Optional[int] = Depends(scope.current)):
     """status: all | pending (not yet detailed) | detailed | excluded. q: text search.
 
@@ -272,27 +274,39 @@ def list_products(status: str = "all", q: str = "", db: Session = Depends(get_db
     otherwise sit there looking exactly like the real thing, scannable and
     printable. `status=excluded` shows precisely those, which is what the
     Inventory Repair screen lists; the count is on `/summary` either way, so the
-    exclusion is never silent."""
+    exclusion is never silent.
+
+    `held=true` narrows the list to what this warehouse holds now (the
+    `include_zero=False` scope), and `limit` caps it. Both exist for a catalogue
+    too large to send whole — hundreds of thousands of SKUs after years of
+    receipts, where the full list cannot be built or drawn. The screens list what
+    is held and search the rest through `q`, which is matched in the database
+    rather than over every product in Python. Called with neither, the answer is
+    exactly what it always was."""
     from ..services import integrity
     ctx = integrity.Context(db)
     # Only what THIS warehouse has anything to do with. Items whose balance here
     # has fallen to zero are kept: they are this building's stock lines, and a
     # list that dropped them the moment they sold out would hide the re-orders.
-    query = scope.products(db, db.query(models.Product), wid)
+    query = scope.products(db, db.query(models.Product), wid, include_zero=not held)
     if status == "pending":
         query = query.filter((models.Product.detailed == False) | (models.Product.detailed.is_(None)))  # noqa: E712
     elif status == "detailed":
         query = query.filter(models.Product.detailed == True)  # noqa: E712
+    if q:
+        # the same four fields and the same case-insensitive substring test as
+        # before, asked of the database
+        like = "%" + q.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        query = query.filter(or_(*(func.lower(func.coalesce(c, "")).like(like, escape="\\")
+                                   for c in (models.Product.description, models.Product.sku,
+                                             models.Product.barcode, models.Product.hsn))))
     ps = query.order_by(models.Product.description).all()
     if status == "excluded":
         ps = [p for p in ps if ctx.product_state(p) != integrity.POSTED]
     else:
         ps = [p for p in ps if ctx.product_state(p) == integrity.POSTED]
-    if q:
-        ql = q.lower()
-        ps = [p for p in ps if ql in (p.description or "").lower()
-              or ql in (p.sku or "").lower() or ql in (p.barcode or "").lower()
-              or ql in (p.hsn or "").lower()]
+    if limit:
+        ps = ps[:max(1, int(limit))]
     return [_localise(_product_out(p, ctx), db, p, wid) for p in ps]
 
 

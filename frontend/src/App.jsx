@@ -3337,10 +3337,26 @@ function Inventory({ toast }) {
   const [adjQty, setAdjQty] = useState('')
   const [adjNote, setAdjNote] = useState('')
   const [q, setQ] = useState('')
+  // The list is what this warehouse holds now; a search of 3+ characters asks
+  // the server across every SKU (a real catalogue is far too large to send
+  // whole), and clearing it brings the held list back.
+  const searched = useRef(false)
   const load = useCallback(() => {
-    api.inventorySummary().then(setSummary); api.listProducts().then(setProducts)
+    api.inventorySummary().then(setSummary); api.listProducts({ held: 1 }).then(setProducts)
   }, [])
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const term = q.trim()
+    if (term.length < 3) {
+      if (searched.current) { searched.current = false; api.listProducts({ held: 1 }).then(setProducts).catch(() => {}) }
+      return
+    }
+    const t = setTimeout(() => {
+      searched.current = true
+      api.listProducts({ q: term, limit: 500 }).then(setProducts).catch(() => {})
+    }, 400)
+    return () => clearTimeout(t)
+  }, [q])
   const open = (id) => api.getProduct(id).then((d) => {
     setDetail(d); setAdjQty(''); setAdjNote('')
   })
@@ -4176,7 +4192,7 @@ function StockOutward({ toast }) {
   const [cards, setCards] = useState({})          // product_id -> full record, for the draft rows
   const [picking, setPicking] = useState(false)   // the tick-sheet over stock is open
   const refresh = useCallback(() => api.listOutwards().then(setList), [])
-  useEffect(() => { refresh(); api.listProducts().then(setProducts) }, [refresh])
+  useEffect(() => { refresh(); api.listProducts({ held: 1 }).then(setProducts) }, [refresh])
   useEffect(() => {
     api.locationTree().then((t) => {
       const warehouses = (t.warehouses || []).filter((w) => w.id && w.active !== false)
@@ -8765,10 +8781,13 @@ function MasterMatrix({ matrix, value, onChange }) {
 function MasterScreen({ mkey, onBack, toast }) {
   const [def, setDef] = useState(null)
   const [list, setList] = useState([])
+  const [total, setTotal] = useState(0)            // matches in the database; list is capped
   const [q, setQ] = useState('')
   const [form, setForm] = useState(null)          // null = list, {} = new, {id} = edit
   const [busy, setBusy] = useState(false)
-  const load = useCallback(() => api.masterRecords(mkey, q).then((r) => setList(r.records)), [mkey, q])
+  const load = useCallback(() => api.masterRecords(mkey, q).then((r) => {
+    setList(r.records); setTotal(r.total ?? r.records.length)
+  }), [mkey, q])
   const recPage = usePaged(list, 50)
   useEffect(() => { api.masterDefinition(mkey).then(setDef); setForm(null) }, [mkey])
   useEffect(() => { load() }, [load])
@@ -8884,7 +8903,9 @@ function MasterScreen({ mkey, onBack, toast }) {
         <>
           <SearchBox value={q} onChange={setQ} placeholder={`Search ${def.label}…`} style={{ maxWidth: 320 }} />
           <div className="small" style={{ margin: '10px 0', color: 'var(--muted)' }}>
-            {list.length} record(s) · {def.groups.reduce((n, g) => n + g.fields.length, 0)} fields,
+            {total > list.length
+              ? <>Showing the newest {list.length} of {total.toLocaleString()} record(s) — search to narrow</>
+              : <>{list.length} record(s)</>} · {def.groups.reduce((n, g) => n + g.fields.length, 0)} fields,
             {' '}{def.groups.reduce((n, g) => n + g.fields.filter((f) => f.req).length, 0)} mandatory
           </div>
           {list.length === 0 && <div className="empty" style={{ marginTop: 30 }}>
@@ -9442,7 +9463,7 @@ function LabelDesigner({ toast, role }) {
         ? 'restart'
         : `The field catalogue could not be read (${e.message || 'the request failed'}).`))
     loadTemplates().catch(() => {})
-    api.listProducts().then(setProducts).catch(() => {})
+    api.listProducts({ held: 1 }).then(setProducts).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadTemplates])
 
@@ -10017,7 +10038,7 @@ function LabelPrinting({ toast }) {
       e.status === 404
         ? 'This server was started before Label Printing existed — restart the ESSA server and reload.'
         : 'Could not load the templates', 'err'))
-    api.listProducts().then(setProducts).catch(() => {})
+    api.listProducts({ held: 1 }).then(setProducts).catch(() => {})
     // once, on mount — see the same note in LabelDesigner: `toast` changes
     // identity every render, and this effect's failure path raises one
     // eslint-disable-next-line react-hooks/exhaustive-deps

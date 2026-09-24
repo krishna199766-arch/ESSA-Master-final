@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ..database import get_db
 from .. import models
@@ -223,7 +224,77 @@ def list_purchases(db: Session = Depends(get_db),
     picked a building — which is the moment they most need to find it again."""
     q = scope.purchases(db.query(models.Purchase), wid)
     ps = q.order_by(models.Purchase.id.desc()).all()
-    return [_purchase_out(p) for p in ps]
+    return _purchase_list_out(db, q, ps)
+
+
+def _purchase_list_out(db: Session, q, ps):
+    """`_purchase_out` for the list screen, with the same fields and the same
+    arithmetic — read in three set-based queries instead of walking every GRN's
+    lines, breakdown rows, products and shortages one lazy load at a time. That
+    walk is a handful of queries per LINE, and with a few years of receipts
+    (hundreds of thousands of lines) the list never came back.
+    """
+    from collections import defaultdict
+    PL, S, P = models.PurchaseLine, models.PurchaseLineSplit, models.Product
+    ids = q.with_entities(models.Purchase.id).subquery()
+    line_ids = db.query(PL.id).filter(PL.purchase_id.in_(select(ids.c.id))).subquery()
+
+    splits = defaultdict(list)                      # line id → [(product id, detailed)]
+    for line_id, product_id, detailed in (
+            db.query(S.line_id, S.product_id, P.detailed)
+              .outerjoin(P, P.id == S.product_id)
+              .filter(S.line_id.in_(select(line_ids.c.id)))):
+        splits[line_id].append((product_id, detailed))
+
+    agg = defaultdict(lambda: {"line_count": 0, "new_products": 0, "items": 0, "pending": 0})
+    for line_id, purchase_id, is_new, product_id, detailed in (
+            db.query(PL.id, PL.purchase_id, PL.is_new_product, PL.product_id, P.detailed)
+              .outerjoin(P, P.id == PL.product_id)
+              .filter(PL.purchase_id.in_(select(ids.c.id)))):
+        a = agg[purchase_id]
+        a["line_count"] += 1
+        rows = splits.get(line_id)
+        if rows:                                    # a split line: one holder per variant
+            a["new_products"] += sum(1 for pid, _ in rows if not pid)
+            holders = rows
+        else:
+            a["new_products"] += 1 if is_new else 0
+            holders = [(product_id, detailed)]
+        a["items"] += len(holders)
+        a["pending"] += sum(1 for pid, det in holders if pid and not det)
+
+    shorts = defaultdict(list)                      # purchase id → claimable shortages
+    for sh in (db.query(models.GrnShortage)
+                 .join(PL, PL.id == models.GrnShortage.line_id)
+                 .filter(PL.purchase_id.in_(select(ids.c.id)),
+                         models.GrnShortage.kind.in_(models.GrnShortage.CLAIMABLE_KINDS))):
+        shorts[sh.line.purchase_id].append(sh)
+
+    out = []
+    for p in ps:
+        a = agg[p.id]
+        d = {
+            "id": p.id, "document_id": p.document_id, "supplier_id": p.supplier_id,
+            "supplier_name": p.supplier.name if p.supplier else None,
+            "grn_no": p.grn_no, "invoice_number": p.invoice_number,
+            "warehouse_id": p.warehouse_id,
+            "warehouse_name": p.warehouse.name if p.warehouse else None,
+            "invoice_date": p.invoice_date, "taxable_total": p.taxable_total,
+            "tax_total": p.tax_total, "grand_total": p.grand_total,
+            "status": p.status, "line_count": a["line_count"],
+            "new_products": a["new_products"],
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "posted_at": p.posted_at.isoformat() if p.posted_at else None,
+        }
+        if p.status == "posted":
+            d["items"] = a["items"]
+            d["items_pending_detail"] = a["pending"]
+        s = shorts.get(p.id, [])
+        d["short_qty"] = round(sum(float(sh.qty or 0) for sh in s), 3)
+        d["short_value"] = round(sum(short_svc.value(sh) for sh in s), 2)
+        d["short_lines"] = len(s)
+        out.append(d)
+    return out
 
 
 # registered before "/{pid}", or the literal path is swallowed by the id route

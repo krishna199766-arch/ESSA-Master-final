@@ -7,6 +7,7 @@ debit-note adjustment (the four variants in the recordings). Outstanding for an
 invoice = grand_total − Σ(settled across all allocations).
 """
 import datetime as dt
+from sqlalchemy import func
 from .. import models
 from . import dates
 
@@ -52,10 +53,24 @@ def pending_bills(db, supplier_id):
     q = db.query(models.Purchase).filter(models.Purchase.status == "posted")
     if supplier_id:
         q = q.filter(models.Purchase.supplier_id == supplier_id)
+    # The same figures invoice_settled / invoice_returns give, read for every
+    # invoice in two grouped queries instead of two queries per invoice — with
+    # tens of thousands of GRNs the per-invoice form took over a minute.
+    settled = dict(db.query(models.PaymentAllocation.purchase_id,
+                            func.sum(models.PaymentAllocation.settled))
+                     .filter(models.PaymentAllocation.purchase_id.isnot(None))
+                     .group_by(models.PaymentAllocation.purchase_id).all())
+    returns = dict(db.query(models.PurchaseReturn.purchase_id,
+                            func.sum(models.PurchaseReturn.total))
+                     .filter(models.PurchaseReturn.purchase_id.isnot(None),
+                             models.PurchaseReturn.status == "posted")
+                     .group_by(models.PurchaseReturn.purchase_id).all())
     out = []
     today = _today()
     for p in q.order_by(models.Purchase.invoice_date).all():
-        outstanding = invoice_outstanding(db, p)
+        s = round(float(settled.get(p.id) or 0), 2)
+        r = round(float(returns.get(p.id) or 0), 2)
+        outstanding = round((p.grand_total or 0) - s - r, 2)
         if outstanding <= 0.01:
             continue
         d = _parse_date(p.invoice_date)
@@ -63,8 +78,8 @@ def pending_bills(db, supplier_id):
         out.append({
             "purchase_id": p.id, "invoice_number": p.invoice_number,
             "invoice_date": p.invoice_date, "days": days,
-            "grand_total": p.grand_total, "settled": invoice_settled(db, p.id),
-            "returns": invoice_returns(db, p.id), "outstanding": outstanding,
+            "grand_total": p.grand_total, "settled": s,
+            "returns": r, "outstanding": outstanding,
         })
     return out
 

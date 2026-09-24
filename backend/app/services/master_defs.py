@@ -256,6 +256,10 @@ ITEM = {
           F("expiry_date", "Expiry Date", "date"),
           F("image", "Image", "image"),
           F("active", "Active", "check", default=True)),
+        # filled only on the items brought over by tools/import_old_items.py
+        G("Old system",
+          F("old_id", "Old ID", help="The item's id in the old billing system"),
+          F("source", "Imported from")),
     ],
 }
 

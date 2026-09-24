@@ -215,7 +215,8 @@ def sales_by_product(start=None, end=None):
             continue
         out[int(pid)] = {"qty": float(qty or 0), "amount": float(amount or 0),
                          "bills": int(bills or 0),
-                         "last_sold": (last or "")[:10] or None}
+                         # str(): SQLite hands back ISO text, Postgres a datetime
+                         "last_sold": str(last or "")[:10] or None}
     for pid, qty, amount in returned:
         if pid is None:
             continue
@@ -247,11 +248,11 @@ def bills_for_product(product_id, limit=50):
         "FROM " + q("invoice_items") + " ii "
         "JOIN " + q("invoices") + " i ON i.id = ii.invoice_id "
         "JOIN " + q("products") + " p ON p.id = ii.product_id "
-        "LEFT JOIN customers c ON c.id = i.customer_id "
+        "LEFT JOIN " + q("customers") + " c ON c.id = i.customer_id "
         "WHERE p.warehouse_id = ?" + LIVE_BILL + " "
         "ORDER BY i.invoice_date DESC, i.id DESC LIMIT ?", (int(product_id), int(limit)))
     rows = [{
-        "kind": "sale", "bill_no": r[0], "date": (r[1] or "")[:10] or None,
+        "kind": "sale", "bill_no": r[0], "date": str(r[1] or "")[:10] or None,
         "qty": float(r[2] or 0), "rate": float(r[3] or 0),
         "gst_rate": r[4], "tax": float(r[5] or 0), "amount": float(r[6] or 0),
         "customer": r[7], "phone": r[8],
@@ -266,7 +267,7 @@ def bills_for_product(product_id, limit=50):
         "WHERE p.warehouse_id = ? "
         "ORDER BY cn.created_at DESC LIMIT ?", (int(product_id), int(limit)))
     rows += [{
-        "kind": "return", "bill_no": r[0], "date": (r[1] or "")[:10] or None,
+        "kind": "return", "bill_no": r[0], "date": str(r[1] or "")[:10] or None,
         "qty": -float(r[2] or 0), "rate": float(r[3] or 0),
         "gst_rate": r[4], "tax": -float(r[5] or 0), "amount": -float(r[6] or 0),
         "customer": r[7], "phone": None,
@@ -307,7 +308,7 @@ def status():
                  "WHERE p.warehouse_id IS NOT NULL" + LIVE_BILL, [])
     last, linked = (rows[0] if rows else (None, 0))
     return {"available": True, "reason": None, "path": str(p), "source": str(p),
-            "last_sale": (last or "")[:10] or None,
+            "last_sale": str(last or "")[:10] or None,
             "linked_products": int(linked or 0)}
 
 

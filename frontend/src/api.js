@@ -269,7 +269,11 @@ export const api = {
 
   // inventory
   inventorySummary: () => fetch('/api/inventory/summary').then(J),
-  listProducts: () => fetch('/api/inventory/products').then(J),
+  // `held: 1` = only what this warehouse holds now; `q` searches every SKU on the
+  // server; `limit` caps the answer. A catalogue of hundreds of thousands of SKUs
+  // cannot be sent whole, so the screens list what is held and search the rest.
+  listProducts: (params) => fetch('/api/inventory/products'
+    + (params ? '?' + new URLSearchParams(params).toString() : '')).then(J),
   getProduct: (id) => fetch(`/api/inventory/products/${id}`).then(J),
   // no editProduct: a product is what its GRN made it — correct it by unposting
   // the GRN, fixing the line and posting again (stock is corrected via adjustStock)
