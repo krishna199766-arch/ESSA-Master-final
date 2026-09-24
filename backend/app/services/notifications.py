@@ -274,6 +274,25 @@ def _refresh_in_background():
     threading.Thread(target=run, name="notifications-refresh", daemon=True).start()
 
 
+def warm():
+    """Start the first evaluation now, on a thread, instead of inside the first
+    request that asks — on a full store that request waited ten seconds or more.
+    A request arriving meanwhile waits on the lock for this same pass rather than
+    starting a second one."""
+    from ..database import SessionLocal
+
+    def run():
+        db = SessionLocal()
+        try:
+            _conditions(db)
+        except Exception:
+            pass                    # the first request will try again
+        finally:
+            db.close()
+
+    threading.Thread(target=run, name="notifications-warm", daemon=True).start()
+
+
 def _conditions(db):
     """[(key, module, notice-or-None)], at most about CONDITIONS_TTL seconds old.
 

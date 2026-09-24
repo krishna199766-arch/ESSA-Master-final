@@ -76,6 +76,51 @@ function usePaged(rows, initial = 50) {
   }
 }
 
+// A value that follows `value` once it has stopped changing for `ms` — so a
+// search box asks the server once per pause, not once per keystroke.
+function useDebounced(value, ms = 300) {
+  const [v, setV] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return v
+}
+
+// usePaged, with the SERVER holding the list. For the lists that grew too big
+// to send whole — tens of thousands of GRNs and dispatches, 10–17 MB each.
+// `fetchPage({ limit, offset })` must resolve to { rows, total, counts? };
+// `key` is everything else the page depends on (search, filter chip), and a
+// change to it goes back to page 1. Same shape as usePaged, so <Pager> is
+// unchanged, plus `rows` (this page), `counts` and `reload`.
+function useServerPaged(fetchPage, key, initial = 50) {
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(initial)
+  const [res, setRes] = useState({ rows: [], total: 0, counts: {} })
+  const [loading, setLoading] = useState(true)
+  const seq = useRef(0)                 // only the newest request may land
+  useEffect(() => { setPage(1) }, [key])
+  const reload = useCallback(() => {
+    const mine = ++seq.current
+    setLoading(true)
+    return fetchPage({ limit: size, offset: size === 0 ? 0 : (page - 1) * size })
+      .then((r) => { if (mine === seq.current) setRes({ rows: r.rows || [], total: r.total || 0, counts: r.counts || {} }) })
+      .catch(() => {})
+      .finally(() => { if (mine === seq.current) setLoading(false) })
+  }, [page, size, key])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [reload])
+  const total = res.total
+  const pages = size === 0 ? 1 : Math.max(1, Math.ceil(total / size))
+  useEffect(() => { if (page > pages) setPage(1) }, [pages, page])
+  const start = size === 0 ? 0 : (page - 1) * size
+  return {
+    page, setPage, size, setSize, total, pages,
+    from: total === 0 ? 0 : start + 1,
+    to: size === 0 ? total : Math.min(total, start + size),
+    slice: res.rows, rows: res.rows, counts: res.counts, loading, reload,
+  }
+}
+
 function Pager({ page, setPage, size, setSize, total, pages, from, to,
                  noun = 'row', nouns, style }) {
   // Nothing to page through, and no page-size choice worth offering: a bar under
@@ -2282,7 +2327,6 @@ const blankShortage = (qty) => ({ kind: 'short', qty: qty != null ? String(qty) 
 const receivedQty = (l) => +(l.received_qty != null ? l.received_qty : l.qty) || 0
 
 function Purchases({ selId, setSelId, toast }) {
-  const [list, setList] = useState([])
   const [grn, setGrn] = useState(null)
   const [q, setQ] = useState('')
   const opts = useProductOptions()                 // attribute option lists
@@ -2296,8 +2340,9 @@ function Purchases({ selId, setSelId, toast }) {
   const [shortOpts, setShortOpts] = useState({ reasons: [] })
   const [units, setUnits] = useState({ types: [], rules: [] })   // unit master
   const [warehouses, setWarehouses] = useState([])  // where a delivery can land
-  const refresh = useCallback(() => api.listPurchases().then(setList), [])
-  useEffect(() => { refresh() }, [refresh])
+  // the sidebar list is one server page (grnPage, below) — refreshing it is
+  // re-reading that page, not the whole register
+  const refresh = () => grnPage.reload()
   useEffect(() => {
     api.locationTree().then((t) => setWarehouses(
       (t.warehouses || []).filter((w) => w.id && w.active !== false))).catch(() => {})
@@ -2688,16 +2733,16 @@ function Purchases({ selId, setSelId, toast }) {
   // the sidebar's scope filter, with its counts — a chip that doesn't say how
   // many it holds makes someone click every one of them to find out
   const [scope, setScope] = useState('all')
-  const inScope = (p) => scope === 'all' ? true
-    : scope === 'short' ? p.short_qty > 0 : p.status === scope
+  // Filtered, searched and paged by the server: a warehouse with years of
+  // receipts is tens of thousands of GRNs, and sending them all to filter here
+  // was 17 MB on every open of this screen.
+  const qd = useDebounced(q)
+  const grnPage = useServerPaged(({ limit, offset }) =>
+    api.purchasesPage({ limit, offset, q: qd, status: scope }), `${scope}|${qd}`)
   const counts = {
-    draft: list.filter((p) => p.status === 'draft').length,
-    posted: list.filter((p) => p.status === 'posted').length,
-    short: list.filter((p) => p.short_qty > 0).length,
+    draft: grnPage.counts.draft || 0, posted: grnPage.counts.posted || 0,
+    short: grnPage.counts.short || 0, all: grnPage.counts.all || 0,
   }
-  const shown = list.filter(inScope)
-    .filter((p) => matches(p, q, ['supplier_name', 'invoice_number', 'status']))
-  const grnPage = usePaged(shown, 50)
   const [pcat, setPcat] = useState({})             // in-progress category per line id
   // Which lines are showing their variant rows. A breakdown of a dozen sizes is
   // a dozen rows under one line, each as tall as its attribute list — enough to
@@ -2735,20 +2780,21 @@ function Purchases({ selId, setSelId, toast }) {
   return (
     <div className="body">
       <Sidebar id="grn" label="GRNs">
-        <div className="head"><h3>GRNs · {shown.length}</h3></div>
-        {list.length > 0 && <>
-          <SearchBox value={q} onChange={setQ} placeholder="Search supplier, invoice, status…" />
+        <div className="head"><h3>GRNs · {grnPage.total.toLocaleString('en-IN')}</h3></div>
+        {counts.all > 0 && <>
+          <SearchBox value={q} onChange={setQ} placeholder="Search supplier, invoice, GRN no, status…" />
           <div className="toolbar"><FilterChips value={scope} onChange={setScope} options={[
             ['draft', 'Draft', counts.draft, 'Receipts still being worked on'],
             ['posted', 'Posted', counts.posted, 'Receipts already in stock'],
             ['short', 'Short', counts.short, 'Receipts with goods billed but not delivered'],
-            ['all', 'All', list.length, 'Every receipt'],
+            ['all', 'All', counts.all, 'Every receipt'],
           ]} /></div>
         </>}
         <div className="list">
-          {list.length === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>No GRNs yet. Open a confirmed document and click “Create GRN”.</div>}
-          {list.length > 0 && shown.length === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>
-            Nothing matches. {q ? 'Clear the search' : 'Try “All”'} to see the other {list.length} receipt(s).</div>}
+          {grnPage.loading && grnPage.rows.length === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>Loading…</div>}
+          {!grnPage.loading && counts.all === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>No GRNs yet. Open a confirmed document and click “Create GRN”.</div>}
+          {!grnPage.loading && counts.all > 0 && grnPage.total === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>
+            Nothing matches. {q ? 'Clear the search' : 'Try “All”'} to see the other {counts.all.toLocaleString('en-IN')} receipt(s).</div>}
           {grnPage.slice.map((p) => (
             <div key={p.id} className={'doc-row' + (selId === p.id ? ' sel' : '')} onClick={() => setSelId(p.id)}>
               <div className="t">{p.supplier_name || 'GRN #' + p.id}</div>
@@ -4161,7 +4207,6 @@ function ProductPicker({ products, already, onAdd, onClose }) {
 
 // ---------- stock outward ----------
 function StockOutward({ toast }) {
-  const [list, setList] = useState([])
   const [products, setProducts] = useState([])
   const [sel, setSel] = useState(null)
   const [creating, setCreating] = useState(false)
@@ -4185,14 +4230,17 @@ function StockOutward({ toast }) {
   // derived AFTER the state it reads — a const referenced above its own
   // declaration is a temporal-dead-zone throw, and in a render that is the whole
   // tab going blank rather than one broken value
-  const shown = list.filter((o) => scope === 'all' || o.status === scope)
-    .filter((o) => matches(o, q, ['to_destination', 'code', 'status']))
-  const outPage = usePaged(shown, 50)
+  // One page at a time from the server, searched and filtered there — every
+  // dispatch ever made is tens of thousands of notes, 10 MB sent whole.
+  const qd = useDebounced(q)
+  const outPage = useServerPaged(({ limit, offset }) =>
+    api.outwardsPage({ status: scope, limit, offset, q: qd }), `${scope}|${qd}`)
+  const counts = outPage.counts
   const [zoom, setZoom] = useState(null)          // a product card, opened large
   const [cards, setCards] = useState({})          // product_id -> full record, for the draft rows
   const [picking, setPicking] = useState(false)   // the tick-sheet over stock is open
-  const refresh = useCallback(() => api.listOutwards().then(setList), [])
-  useEffect(() => { refresh(); api.listProducts({ held: 1 }).then(setProducts) }, [refresh])
+  const refresh = () => outPage.reload()
+  useEffect(() => { api.listProducts({ held: 1 }).then(setProducts) }, [])
   useEffect(() => {
     api.locationTree().then((t) => {
       const warehouses = (t.warehouses || []).filter((w) => w.id && w.active !== false)
@@ -4312,19 +4360,20 @@ function StockOutward({ toast }) {
   return (
     <div className="body">
       <Sidebar id="outward" label="Outwards">
-        <div className="head"><h3>Outwards · {list.length}</h3>
+        <div className="head"><h3>Outwards · {outPage.total.toLocaleString('en-IN')}</h3>
           <button className="btn primary" style={{ padding: '4px 10px' }} onClick={() => { setCreating(true); setSel(null) }}>+ New</button></div>
-        {list.length > 0 && <>
+        {(counts.all || 0) > 0 && <>
           <SearchBox value={q} onChange={setQ} placeholder="Search destination, code, status…" />
           <div className="toolbar"><FilterChips value={scope} onChange={setScope} options={[
-            ['draft', 'Draft', list.filter((o) => o.status === 'draft').length, 'Prepared, nothing dispatched yet'],
-            ['posted', 'Sent', list.filter((o) => o.status === 'posted').length, 'Dispatched, not yet accepted'],
-            ['received', 'Received', list.filter((o) => o.status === 'received').length, 'Accepted at the destination'],
-            ['all', 'All', list.length, 'Every dispatch'],
+            ['draft', 'Draft', counts.draft || 0, 'Prepared, nothing dispatched yet'],
+            ['posted', 'Sent', counts.posted || 0, 'Dispatched, not yet accepted'],
+            ['received', 'Received', counts.received || 0, 'Accepted at the destination'],
+            ['all', 'All', counts.all || 0, 'Every dispatch'],
           ]} /></div>
         </>}
         <div className="list">
-          {list.length > 0 && shown.length === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>
+          {outPage.loading && outPage.rows.length === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>Loading…</div>}
+          {!outPage.loading && (counts.all || 0) > 0 && outPage.total === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>
             Nothing matches. Try “All” or clear the search.</div>}
           {outPage.slice.map((o) => (
             <div key={o.id} className={'doc-row' + (sel === o.id && !creating ? ' sel' : '')} onClick={() => { setSel(o.id); setCreating(false) }}>
@@ -4534,7 +4583,6 @@ function StockOutward({ toast }) {
 
 // ---------- stock inward (accepting a dispatched transfer at the destination) ----------
 function StockInward({ toast }) {
-  const [list, setList] = useState([])
   const [sel, setSel] = useState(null)
   const [detail, setDetail] = useState(null)
   const [scope, setScope] = useState('posted')     // awaiting receipt | already received
@@ -4544,11 +4592,14 @@ function StockInward({ toast }) {
   const [q, setQ] = useState('')
   const [zoom, setZoom] = useState(null)
   const [hit, setHit] = useState(null)             // the line a scan just landed on
-  const inwPage = usePaged(
-    list.filter((o) => matches(o, q, ['to_destination', 'code', 'status'])), 50)
+  // Paged by the server: "Received" is every transfer ever accepted.
+  const qd = useDebounced(q)
+  const inwPage = useServerPaged(({ limit, offset }) =>
+    api.outwardsPage({ status: scope, limit, offset, q: qd }), `${scope}|${qd}`)
+  // how many this chip holds before any search — whether there is anything to search
+  const inScope = scope === 'all' ? (inwPage.counts.all || 0) : (inwPage.counts[scope] || 0)
 
-  const refresh = useCallback(() => api.listOutwards(scope).then(setList), [scope])
-  useEffect(() => { refresh() }, [refresh])
+  const refresh = () => inwPage.reload()
   const open = (id) => api.getOutward(id).then((o) => { setSel(id); setDetail(o); setAcc({}); setHit(null) })
 
   // Scanning while counting the box in: it says which line the garment is, and
@@ -4591,7 +4642,7 @@ function StockInward({ toast }) {
   return (
     <div className="body">
       <Sidebar id="inward" label="Stock Inward">
-        <div className="head"><h3>Stock Inward · {list.length}</h3></div>
+        <div className="head"><h3>Stock Inward · {inwPage.total.toLocaleString('en-IN')}</h3></div>
         <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px' }}>
         </div>
         <div className="toolbar"><FilterChips value={scope}
@@ -4600,10 +4651,13 @@ function StockInward({ toast }) {
             ['received', 'Received', null, 'Already accepted'],
             ['all', 'All', null, 'Every transfer'],
           ]} /></div>
-        {list.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search destination, code…" />}
+        {inScope > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search destination, code…" />}
         <div className="list">
-          {list.length === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>
+          {inwPage.loading && inwPage.rows.length === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>Loading…</div>}
+          {!inwPage.loading && inScope === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>
             {scope === 'posted' ? 'Nothing in transit — dispatched transfers appear here to be received.' : 'Nothing here yet.'}</div>}
+          {!inwPage.loading && inScope > 0 && inwPage.total === 0 && <div className="empty" style={{ marginTop: 30, fontSize: 13 }}>
+            Nothing matches — clear the search.</div>}
           {inwPage.slice.map((o) => (
             <div key={o.id} className={'doc-row' + (sel === o.id ? ' sel' : '')} onClick={() => open(o.id)}>
               <div className="t">{o.to_destination || o.code}</div>
@@ -4842,7 +4896,6 @@ function Payments({ toast }) {
 // ---------- purchase returns ----------
 function Returns({ toast }) {
   const [list, setList] = useState([])
-  const [purchases, setPurchases] = useState([])
   const [picking, setPicking] = useState(false)
   const [scope, setScope] = useState('all')
   const [detail, setDetail] = useState(null)
@@ -4854,7 +4907,14 @@ function Returns({ toast }) {
   const refresh = useCallback(() => api.listReturns().then(setList), [])
   useEffect(() => { refresh() }, [refresh])
 
-  const openPicker = () => { api.listPurchases().then(p => setPurchases(p.filter(x => x.status === 'posted'))); setPicking(true); setDetail(null) }
+  // The reference-invoice picker: posted GRNs, a page at a time and searched on
+  // the server — every posted receipt at once was a table of tens of thousands.
+  const [pq, setPq] = useState('')
+  const pqd = useDebounced(pq)
+  const pickPage = useServerPaged(({ limit, offset }) => (picking
+    ? api.purchasesPage({ limit, offset, q: pqd, status: 'posted' })
+    : Promise.resolve({ rows: [], total: 0 })), `${picking}|${pqd}`)
+  const openPicker = () => { setPq(''); setPicking(true); setDetail(null) }
   // Received lines come back at 0 — how many go back is still a decision. Shortage
   // lines come back at the quantity counted at the dock, because that one isn't:
   // the pieces are missing and by how many was settled when the boxes were opened.
@@ -4916,10 +4976,14 @@ function Returns({ toast }) {
       {picking ? (
         <div className="editor">
           <h2 style={{ marginTop: 0 }}>New Purchase Return — pick a reference invoice</h2>
+          <SearchBox value={pq} onChange={setPq} placeholder="Search supplier, invoice, GRN no…" style={{ maxWidth: 360 }} />
+          {pickPage.loading && pickPage.rows.length === 0 && <div className="empty" style={{ marginTop: 20 }}>Loading…</div>}
+          {!pickPage.loading && pickPage.total === 0 && <div className="empty" style={{ marginTop: 20 }}>
+            {pq ? 'No posted GRN matches — clear the search.' : 'No posted GRN to return against yet.'}</div>}
           <table className="items"><thead><tr><th>Supplier</th><th>Invoice</th><th>Date</th>
             <th style={{ textAlign: 'right' }}>Grand total</th>
             <th style={{ textAlign: 'right' }}>Short</th><th></th></tr></thead>
-            <tbody>{purchases.map(p => (
+            <tbody>{pickPage.rows.map(p => (
               <tr key={p.id}><td>{p.supplier_name}</td><td className="mono">{p.invoice_number}</td>
                 <td>{fmtDate(p.invoice_date)}</td><td style={{ textAlign: 'right' }}>₹ {money(p.grand_total)}</td>
                 <td style={{ textAlign: 'right', color: p.short_qty ? 'var(--warn)' : 'var(--muted)' }}
@@ -4934,6 +4998,7 @@ function Returns({ toast }) {
                   <button className="btn" style={{ padding: '3px 10px' }} onClick={() => startReturn(p.id)}>Return →</button></td></tr>
             ))}</tbody>
           </table>
+          <Pager {...pickPage} noun="posted GRN" />
         </div>
       ) : detail ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -16039,14 +16104,16 @@ function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStoc
   const load = useCallback(() => {
     setBusy(true)
     return Promise.allSettled([
-      api.listPurchases(), api.inventorySummary(), api.listOutwards('posted'),
+      // the GRN figures, not every GRN — the full list was 17 MB on a big store
+      api.purchasesSummary(), api.inventorySummary(), api.listOutwards('posted'),
       api.listOutwards('draft'), api.pendingBills(), api.listReturns(),
       api.lrList(), api.listSuppliers(), api.notifications(), api.deadStockSummary(),
     ]).then((r) => {
       const v = (i, fb) => (r[i].status === 'fulfilled' ? r[i].value : fb)
       setPartial(r.some((x) => x.status === 'rejected'))
       setD({
-        grns: v(0, []), stock: v(1, {}), transit: v(2, []), outDrafts: v(3, []),
+        grns: v(0, { drafts: [], recent: [], posted: 0, short_lines: 0, short_value: 0 }),
+        stock: v(1, {}), transit: v(2, []), outDrafts: v(3, []),
         bills: v(4, []), returns: v(5, []), lr: v(6, []), suppliers: v(7, []),
         // The same feed the bell reads. One call rather than a second pass for
         // the dead-stock tile: the notices already carry it, and two reads of
@@ -16064,10 +16131,10 @@ function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStoc
   if (!d) return <div className="empty" style={{ marginTop: 120 }}>Loading the dashboard…</div>
 
   const toReview = docs.filter((x) => x.status === 'needs_review').length
-  const grnDrafts = d.grns.filter((g) => g.status === 'draft')
-  const grnPosted = d.grns.filter((g) => g.status === 'posted')
-  const shortLines = sum(d.grns, (g) => g.short_lines)
-  const shortValue = sum(d.grns, (g) => g.short_value)
+  const grnDrafts = d.grns.drafts || []
+  const grnPostedCount = d.grns.posted || 0
+  const shortLines = d.grns.short_lines || 0
+  const shortValue = d.grns.short_value || 0
   const lrPending = d.lr.filter((e) => !e.received_by).length
   const lrUnlinked = d.lr.filter((e) => !e.matched).length
   const payable = sum(d.bills, (b) => b.outstanding)
@@ -16118,7 +16185,7 @@ function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStoc
   const open = attention.filter((a) => a.tone === 'warn').length
 
   const recentDocs = docs.slice(0, 6)
-  const recentGrns = d.grns.slice(0, 6)
+  const recentGrns = d.grns.recent || []
 
   return (
     <div className="screen scrolls">
@@ -16225,7 +16292,7 @@ function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStoc
               onClick={() => go('lr')} />
           </div>
           <div className="items-foot">
-            <span>Posted GRNs <b>{grnPosted.length}</b></span>
+            <span>Posted GRNs <b>{grnPostedCount.toLocaleString('en-IN')}</b></span>
             <span>Suppliers <b>{d.suppliers.length}</b></span>
             <span>Documents <b>{docs.length}</b></span>
             <span>LR entries <b>{d.lr.length}</b></span>

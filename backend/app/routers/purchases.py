@@ -214,20 +214,92 @@ def _purchase_out(p: models.Purchase, with_lines=False, db: Session = None):
     return d
 
 
+def _short_ids(db: Session):
+    """Ids of GRNs with a claimable shortage outstanding — what the list prints
+    as `short_qty > 0` (the sum, rounded to 3 places, above zero)."""
+    PL, SH = models.PurchaseLine, models.GrnShortage
+    return (select(PL.purchase_id).join(SH, SH.line_id == PL.id)
+            .where(SH.kind.in_(SH.CLAIMABLE_KINDS))
+            .group_by(PL.purchase_id)
+            .having(func.sum(func.coalesce(SH.qty, 0)) >= 0.0005))
+
+
+def _rows_for(db: Session, ps):
+    """`_purchase_list_out` for exactly these GRNs."""
+    ids = [p.id for p in ps]
+    return _purchase_list_out(db, db.query(models.Purchase).filter(models.Purchase.id.in_(ids)), ps)
+
+
+def _with_names(q):
+    # Supplier and warehouse come in the same read. Lazily, each distinct one is
+    # its own round trip — over four thousand suppliers, half a minute on the LAN.
+    return q.options(joinedload(models.Purchase.supplier), joinedload(models.Purchase.warehouse))
+
+
 @router.get("")
-def list_purchases(db: Session = Depends(get_db),
+def list_purchases(limit: Optional[int] = None, offset: int = 0, q: str = "",
+                   status: str = "all", db: Session = Depends(get_db),
                    wid: Optional[int] = Depends(scope.current)):
     """The GRN list for the warehouse this call is made inside.
 
     A draft with no warehouse chosen yet is included: it is a receipt somebody
     here has started, and it would otherwise be on nobody's screen until they
-    picked a building — which is the moment they most need to find it again."""
-    q = scope.purchases(db.query(models.Purchase), wid)
-    # Supplier and warehouse come in the same read. Lazily, each distinct one is
-    # its own round trip — over four thousand suppliers, half a minute on the LAN.
-    ps = (q.options(joinedload(models.Purchase.supplier), joinedload(models.Purchase.warehouse))
-           .order_by(models.Purchase.id.desc()).all())
-    return _purchase_list_out(db, q, ps)
+    picked a building — which is the moment they most need to find it again.
+
+    Without `limit` this is every GRN, as a list — what the phone apps read.
+    With it, one page: `{rows, total, counts}`, where `status` is draft | posted
+    | short | all, `q` searches supplier, invoice number, GRN number and status,
+    `total` is how many match, and `counts` are the filter chips' numbers for
+    the whole warehouse. A store with years of receipts sent the full list as
+    17 MB on every open of the screen; a page is fifty rows.
+    """
+    P = models.Purchase
+    base = scope.purchases(db.query(P), wid)
+    if limit is None:
+        return _purchase_list_out(db, base, _with_names(base).order_by(P.id.desc()).all())
+
+    shorts = _short_ids(db)
+    counts = {k: n for k, n in base.with_entities(P.status, func.count(P.id)).group_by(P.status)}
+    counts = {"draft": counts.get("draft", 0), "posted": counts.get("posted", 0),
+              "short": base.filter(P.id.in_(shorts)).count(),
+              "all": sum(counts.values())}
+
+    filtered = base
+    if status == "short":
+        filtered = filtered.filter(P.id.in_(shorts))
+    elif status and status != "all":
+        filtered = filtered.filter(P.status == status)
+    term = (q or "").strip()
+    if term:
+        like = f"%{term}%"
+        named = select(models.Supplier.id).where(models.Supplier.name.ilike(like))
+        filtered = filtered.filter(P.supplier_id.in_(named) | P.invoice_number.ilike(like)
+                                   | P.grn_no.ilike(like) | P.status.ilike(like))
+    total = filtered.count()
+    page = _with_names(filtered).order_by(P.id.desc()).offset(max(0, offset))
+    if limit > 0:
+        page = page.limit(limit)
+    return {"rows": _rows_for(db, page.all()), "total": total, "counts": counts}
+
+
+@router.get("/summary")
+def purchases_summary(db: Session = Depends(get_db),
+                      wid: Optional[int] = Depends(scope.current)):
+    """What the dashboard shows about GRNs, without sending every one of them:
+    the drafts, how many are posted, the open shortage claims and the six most
+    recent. Same fields and the same arithmetic as the list rows."""
+    P, PL, SH = models.Purchase, models.PurchaseLine, models.GrnShortage
+    base = scope.purchases(db.query(P), wid)
+    drafts = _with_names(base.filter(P.status == "draft")).order_by(P.id.desc()).all()
+    recent = _with_names(base).order_by(P.id.desc()).limit(6).all()
+    posted = base.filter(P.status == "posted").count()
+    ids = base.with_entities(P.id).subquery()
+    claims = (db.query(SH).join(PL, PL.id == SH.line_id)
+                .filter(PL.purchase_id.in_(select(ids.c.id)),
+                        SH.kind.in_(SH.CLAIMABLE_KINDS)).all())
+    return {"drafts": _rows_for(db, drafts), "recent": _rows_for(db, recent),
+            "posted": posted, "short_lines": len(claims),
+            "short_value": round(sum(short_svc.value(sh) for sh in claims), 2)}
 
 
 def _purchase_list_out(db: Session, q, ps):

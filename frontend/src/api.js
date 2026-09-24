@@ -221,6 +221,11 @@ export const api = {
 
   // purchases / GRN
   listPurchases: () => fetch('/api/purchases').then(J),
+  // one page — { rows, total, counts }. status: draft | posted | short | all
+  purchasesPage: ({ limit, offset, q, status }) =>
+    fetch('/api/purchases' + qs({ limit, offset, q, status })).then(J),
+  // the dashboard's GRN figures: { drafts, recent, posted, short_lines, short_value }
+  purchasesSummary: () => fetch('/api/purchases/summary').then(J),
   getPurchase: (id) => fetch(`/api/purchases/${id}`).then(J),
   // which warehouse took this delivery in. Draft only — once posted the stock is
   // standing somewhere and moving it is unpost → set → post.
@@ -455,6 +460,10 @@ export const api = {
     const s = q.toString()
     return fetch('/api/outward' + (s ? '?' + s : '')).then(J)
   },
+  // one page — { rows, total, counts }; counts are per status for the chips
+  outwardsPage: ({ status, kind, warehouseId, limit, offset, q }) =>
+    fetch('/api/outward' + qs({ status: status === 'all' ? '' : status,
+      kind: kind === 'all' ? '' : kind, warehouse_id: warehouseId, limit, offset, q })).then(J),
   getOutward: (id) => fetch(`/api/outward/${id}`).then(J),
   // body may carry from_warehouse_id and one of to_warehouse_id / to_store_id;
   // a bad pair (same warehouse both ends, unknown place) comes back as a 400

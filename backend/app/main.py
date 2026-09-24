@@ -656,6 +656,18 @@ def _preload_pos():
         _pos_asgi()
 
 
+@app.on_event("startup")
+def _warm_notifications():
+    """Work out the bell's queues in the background as the server comes up.
+
+    Registered AFTER _preload_pos so it runs after it: a thread started while
+    the shop is loading would import through the swapped `sys.modules["app"]`
+    described there."""
+    if _boot_wanted():
+        from .services import notifications as notifications_svc
+        notifications_svc.warm()
+
+
 def _pos_asgi():
     """The mounted shop, built on demand and kept for the life of the instance."""
     global _pos_app, _pos_error, _pos_loaded

@@ -132,6 +132,7 @@ def _get(oid: int, db: Session):
 
 @router.get("")
 def list_outwards(status: str = "all", kind: str = "all",
+                  limit: Optional[int] = None, offset: int = 0, q: str = "",
                   db: Session = Depends(get_db),
                   warehouse_id: Optional[int] = Depends(scope.current)):
     """`status` filters the list: draft | posted | received. 'posted' is what the
@@ -140,23 +141,44 @@ def list_outwards(status: str = "all", kind: str = "all",
     `kind` narrows it to transfer (warehouse → warehouse), store, or dispatch.
     `warehouse_id` returns the notes that concern one building — sent from it OR
     coming to it, because both are that warehouse's business and making the
-    screen ask twice is how the inbound half gets forgotten."""
-    q = db.query(models.StockOutward)
-    if status and status != "all":
-        q = q.filter(models.StockOutward.status == status)
+    screen ask twice is how the inbound half gets forgotten.
+
+    Without `limit`, every matching note as a list. With it, one page:
+    `{rows, total, counts}` — `q` searches destination, code and status, `total`
+    is how many match, `counts` are per status for the chips (ignoring `status`
+    and `q`, so every chip keeps its number while one is selected)."""
+    SO = models.StockOutward
+    base = db.query(SO)
     if kind == "transfer":
-        q = q.filter(models.StockOutward.to_warehouse_id.isnot(None))
+        base = base.filter(SO.to_warehouse_id.isnot(None))
     elif kind == "store":
-        q = q.filter(models.StockOutward.to_store_id.isnot(None))
+        base = base.filter(SO.to_store_id.isnot(None))
     elif kind == "dispatch":
-        q = q.filter(models.StockOutward.to_warehouse_id.is_(None),
-                     models.StockOutward.to_store_id.is_(None))
+        base = base.filter(SO.to_warehouse_id.is_(None), SO.to_store_id.is_(None))
     # Sent from here OR coming to here — both are this warehouse's business, and
     # filtering to the source alone is what makes an arriving transfer invisible
     # at the branch that has to count it in.
-    q = scope.outwards(q, warehouse_id)
-    totals = _totals_by_note(db, q)
-    return [_out(o, totals=totals) for o in q.order_by(models.StockOutward.id.desc()).all()]
+    base = scope.outwards(base, warehouse_id)
+    filtered = base.filter(SO.status == status) if status and status != "all" else base
+
+    if limit is None:
+        totals = _totals_by_note(db, filtered)
+        return [_out(o, totals=totals) for o in filtered.order_by(SO.id.desc()).all()]
+
+    term = (q or "").strip()
+    if term:
+        like = f"%{term}%"
+        filtered = filtered.filter(SO.to_destination.ilike(like) | SO.code.ilike(like)
+                                   | SO.status.ilike(like))
+    counts = dict(base.with_entities(SO.status, func.count(SO.id)).group_by(SO.status).all())
+    counts["all"] = sum(counts.values())
+    total = filtered.count()
+    page = filtered.order_by(SO.id.desc()).offset(max(0, offset))
+    if limit > 0:
+        page = page.limit(limit)
+    notes = page.all()
+    totals = _totals_by_note(db, db.query(SO).filter(SO.id.in_([o.id for o in notes])))
+    return {"rows": [_out(o, totals=totals) for o in notes], "total": total, "counts": counts}
 
 
 @router.post("")
