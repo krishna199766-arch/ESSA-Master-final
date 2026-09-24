@@ -79,10 +79,13 @@ def purchases_by_month(db, months=MONTHS_BACK):
     month the goods were billed, which is the month someone is asking about."""
     axis = _month_axis(months)
     seen = dict.fromkeys(axis, 0.0)
-    for p in db.query(models.Purchase).filter(models.Purchase.status == "posted").all():
-        k = _month_key(p.invoice_date)
+    # the two columns this reads, not every GRN as a full object
+    for invoice_date, grand_total in (db.query(models.Purchase.invoice_date,
+                                               models.Purchase.grand_total)
+                                        .filter(models.Purchase.status == "posted")):
+        k = _month_key(invoice_date)
         if k in seen:
-            seen[k] += float(p.grand_total or 0)
+            seen[k] += float(grand_total or 0)
     return {"labels": [_label(k) for k in axis],
             "values": [round(seen[k], 2) for k in axis]}
 
@@ -127,12 +130,15 @@ def stock_by_category(db, top=5):
 
     Folded rather than truncated: a top-5 that quietly drops the rest would show a
     ring that does not add up to the stock value stated beside it."""
+    from sqlalchemy import select
     from . import integrity
-    ctx = integrity.Context(db)
-    buckets = defaultdict(float)
     # A product with no stock has no stock value, so it cannot reach a bucket;
     # asking only the ones that hold stock gives the same ring for a fraction of
-    # the provenance checks.
+    # the provenance checks — and the provenance is read for those products only,
+    # not for the whole catalogue.
+    held = select(models.Product.id).where(models.Product.stock_qty != 0)
+    ctx = integrity.Context(db, product_ids=held)
+    buckets = defaultdict(float)
     for p in db.query(models.Product).filter(models.Product.stock_qty != 0):
         if ctx.product_state(p) != integrity.POSTED:
             continue
@@ -152,8 +158,13 @@ def stock_by_category(db, top=5):
 def top_suppliers(db, top=6):
     """Suppliers by posted purchase value, biggest first."""
     buckets = defaultdict(float)
-    for p in db.query(models.Purchase).filter(models.Purchase.status == "posted").all():
-        buckets[p.supplier.name if p.supplier else "—"] += float(p.grand_total or 0)
+    # supplier name joined in the same read — lazily it was a query per supplier
+    for sid, name, grand_total in (db.query(models.Supplier.id, models.Supplier.name,
+                                            models.Purchase.grand_total)
+                                     .outerjoin(models.Supplier,
+                                                models.Supplier.id == models.Purchase.supplier_id)
+                                     .filter(models.Purchase.status == "posted")):
+        buckets[name if sid is not None else "—"] += float(grand_total or 0)
     ranked = sorted(buckets.items(), key=lambda kv: -kv[1])[:top]
     return [{"label": k, "value": round(v, 2)} for k, v in ranked]
 

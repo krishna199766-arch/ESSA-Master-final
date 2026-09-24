@@ -114,23 +114,29 @@ const spreadQty = (total, n) => {
 function GrnList({ api, onPick, onLogout }) {
   const [list, setList] = useState([]);
   const [status, setStatus] = useState('draft');
+  const [drafts, setDrafts] = useState(0);        // "to receive", counted by the server
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
 
+  // The server filters and caps the list; the phone no longer fetches every GRN.
   const load = useCallback(async () => {
     setLoading(true); setErr('');
-    try { setList(await api.purchases()); }
+    try {
+      const r = await api.purchases(status);
+      setList(r.rows || []);
+      setDrafts((r.counts && r.counts.draft) || 0);
+    }
     catch (e) { setErr(e.message); }
     setLoading(false);
-  }, [api]);
+  }, [api, status]);
   useEffect(() => { load(); }, [load]);
 
-  const shown = list.filter((p) => status === 'all' || p.status === status);
+  const shown = list;
   return (
     <View style={{ flex: 1 }}>
       <View style={s.topbar}>
         <Text style={s.topTitle}>Goods receipts</Text>
-        <Text style={s.topCount}>{list.filter((p) => p.status === 'draft').length} to receive</Text>
+        <Text style={s.topCount}>{drafts} to receive</Text>
         <TouchableOpacity onPress={onLogout}><Text style={[s.link, s.topLink]}>Logout</Text></TouchableOpacity>
       </View>
       <View style={{ flexDirection: 'row', gap: 8, padding: 12 }}>

@@ -106,7 +106,7 @@ def _base_options():
 BASE_OPTIONS = _base_options()
 
 
-def _localise(d: dict, db: Session, product, wid):
+def _localise(d: dict, db: Session, product, wid, balances=None):
     """Restate a product payload as THIS warehouse sees it.
 
     Inside a warehouse the word "Stock" on a screen means that warehouse's
@@ -116,12 +116,21 @@ def _localise(d: dict, db: Session, product, wid):
     them under their own names rather than thrown away: "we have none here but
     forty elsewhere" is the answer to a shortage, and it is only reachable if
     both numbers survive.
+
+    `balances` ({product_id: StockBalance} for `wid`, read once for a whole
+    list) answers the same as qty_at / cost_at without two queries per product.
     """
     if not wid or product is None:
         return d
     from ..services import stock_locations as stock_loc
-    qty = stock_loc.qty_at(db, product.id, wid)
-    cost = stock_loc.cost_at(db, product.id, wid)
+    if balances is None:
+        qty = stock_loc.qty_at(db, product.id, wid)
+        cost = stock_loc.cost_at(db, product.id, wid)
+    else:
+        row = balances.get(product.id)
+        qty = float(row.qty or 0) if row else 0.0
+        cost = (float(row.avg_cost or 0) if row and (row.qty or 0) > stock_loc.TOLERANCE
+                else float(product.avg_cost or 0))
     return {**d,
             "company_stock_qty": d.get("stock_qty"),
             "company_stock_value": d.get("stock_value"),
@@ -207,6 +216,11 @@ def summary(db: Session = Depends(get_db),
     return s
 
 
+#: More distinct values than this on products, and an attribute's values are not
+#: merged into its dropdown — see product_options.
+MAX_LEARNED_OPTIONS = 2000
+
+
 @router.get("/product-options")
 def product_options(warehouse_id: Optional[int] = None,
                     catalogue_id: Optional[int] = None,
@@ -249,7 +263,14 @@ def product_options(warehouse_id: Optional[int] = None,
         have = {v.strip().lower() for v in opts[key]}
         rows = (db.query(col).filter(
             (models.Product.catalogue_id == catalogue_id)
-            | (models.Product.catalogue_id.is_(None))).distinct().all())
+            | (models.Product.catalogue_id.is_(None))).distinct()
+            .limit(MAX_LEARNED_OPTIONS + 1).all())
+        if len(rows) > MAX_LEARNED_OPTIONS:
+            # Not a vocabulary: an identifier nearly every product has its own
+            # of (design numbers — over 150,000 on a full store). Offered as a
+            # dropdown it was megabytes on every screen that draws one; the
+            # field stays free text, and the master's own options still come.
+            continue
         for val in sorted({v[0] for v in rows if v[0]}):
             if val.strip().lower() not in have:
                 opts[key].append(val)
@@ -284,11 +305,17 @@ def list_products(status: str = "all", q: str = "", held: bool = False,
     rather than over every product in Python. Called with neither, the answer is
     exactly what it always was."""
     from ..services import integrity
-    ctx = integrity.Context(db)
     # Only what THIS warehouse has anything to do with. Items whose balance here
     # has fallen to zero are kept: they are this building's stock lines, and a
     # list that dropped them the moment they sold out would hide the re-orders.
     query = scope.products(db, db.query(models.Product), wid, include_zero=not held)
+    if held and not wid:
+        # Company-wide there is no warehouse to narrow by, and scope.products
+        # returns everything — so `held` listed the whole catalogue, every
+        # product ever received (400k on a full store), to a screen that asked
+        # for what is in stock. Held company-wide is stock above zero — the same
+        # test scope.product_ids_here applies to one warehouse's balances.
+        query = query.filter(models.Product.stock_qty > 0)
     if status == "pending":
         query = query.filter((models.Product.detailed == False) | (models.Product.detailed.is_(None)))  # noqa: E712
     elif status == "detailed":
@@ -300,14 +327,35 @@ def list_products(status: str = "all", q: str = "", held: bool = False,
         query = query.filter(or_(*(func.lower(func.coalesce(c, "")).like(like, escape="\\")
                                    for c in (models.Product.description, models.Product.sku,
                                              models.Product.barcode, models.Product.hsn))))
-    ps = query.order_by(models.Product.description).all()
-    if status == "excluded":
-        ps = [p for p in ps if ctx.product_state(p) != integrity.POSTED]
-    else:
-        ps = [p for p in ps if ctx.product_state(p) == integrity.POSTED]
+    # Stock or not is decided in the database — integrity.posted_product_ids is
+    # the same rule Context.product_state applies one product at a time — so the
+    # limit is applied there too. Filtered in Python, a search matching tens of
+    # thousands had every match's provenance worked out to keep the first 500.
+    from sqlalchemy import select
+    posted = integrity.posted_product_ids(db).subquery()
+    is_stock = models.Product.id.in_(select(posted.c.product_id))
+    query = query.filter(~is_stock if status == "excluded" else is_stock)
+    # id breaks ties, so two loads of the same list come back in the same order
+    query = query.order_by(models.Product.description, models.Product.id)
     if limit:
-        ps = ps[:max(1, int(limit))]
-    return [_localise(_product_out(p, ctx), db, p, wid) for p in ps]
+        query = query.limit(max(1, int(limit)))
+    ps = query.all()
+    # Provenance for exactly the products being returned. Built for the whole
+    # catalogue it read every GRN line and ledger row there is — millions on a
+    # full store — to answer about the few thousand being listed. A literal id
+    # list for a normal page; the query itself past that, because Postgres
+    # refuses more than 65,535 parameters in one statement.
+    ids = ([p.id for p in ps] if len(ps) <= 20000
+           else query.with_entities(models.Product.id).subquery().select())
+    ctx = integrity.Context(db, product_ids=ids)
+    ctx.preload_units()           # every listed product's piece codes in one read
+    balances = None
+    if wid:
+        # this warehouse's balance for each listed product, read once
+        SB = models.StockBalance
+        balances = {b.product_id: b for b in db.query(SB).filter(
+            SB.warehouse_id == wid, SB.product_id.in_(ids))}
+    return [_localise(_product_out(p, ctx), db, p, wid, balances) for p in ps]
 
 
 @router.get("/products/{prod_id}")
@@ -417,7 +465,7 @@ def product_units(prod_id: int, db: Session = Depends(get_db)):
     p = db.get(models.Product, prod_id)
     if not p:
         raise HTTPException(404, "product not found")
-    ctx = integrity.Context(db)
+    ctx = integrity.Context(db, product_ids=[prod_id])     # this product's provenance only
     rep = integrity.product_report(db, p, ctx)
     rows = db.query(models.ProductUnit).filter(
         models.ProductUnit.product_id == prod_id).order_by(models.ProductUnit.seq).all()
@@ -744,9 +792,9 @@ def labels(ids: str = "", status: str = "detailed", db: Session = Depends(get_db
     say what it left out. An explicit id list is stricter: naming a record that is
     not stock is a mistake worth surfacing, not silently honouring."""
     from ..services import integrity
-    ctx = integrity.Context(db)
     if ids.strip():
         want = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+        ctx = integrity.Context(db, product_ids=want)       # the named products only
         ps = db.query(models.Product).filter(models.Product.id.in_(want)).all()
         ps.sort(key=lambda p: want.index(p.id))
         bad = [p for p in ps if ctx.product_state(p) != integrity.POSTED]
@@ -758,6 +806,8 @@ def labels(ids: str = "", status: str = "detailed", db: Session = Depends(get_db
         q = db.query(models.Product)
         if status == "detailed":
             q = q.filter(models.Product.detailed == True)  # noqa: E712
+        ctx = integrity.Context(db, product_ids=q.with_entities(models.Product.id)
+                                .subquery().select())
         ps = [p for p in q.order_by(models.Product.description).all()
               if ctx.product_state(p) == integrity.POSTED]
     if not ps:

@@ -41,7 +41,7 @@ garment on two systems' shelves and double the company's stock on hand.
 """
 import datetime as dt
 
-from sqlalchemy import case, func
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -469,6 +469,22 @@ def movement_series(db: Session, days=14, warehouse_id=None, today=None) -> dict
     }
 
 
+def outward_line_totals(db: Session, q) -> dict:
+    """{note id: (line_count, qty_sent, qty_accepted)} for every note `q` selects,
+    in ONE grouped query.
+
+    StockOutward.total_qty / total_accepted read the note's `lines`, which is a
+    lazy load per note — tens of thousands of round trips for a list or a
+    summary. Same arithmetic: accepted falls back to qty. Only a RECEIVED note
+    has accepted anything; the caller applies that, as the model does."""
+    L = models.StockOutwardLine
+    ids = q.with_entities(models.StockOutward.id).subquery()
+    rows = (db.query(L.outward_id, func.count(L.id), func.sum(func.coalesce(L.qty, 0)),
+                     func.sum(func.coalesce(L.accepted_qty, L.qty, 0)))
+            .filter(L.outward_id.in_(select(ids.c.id))).group_by(L.outward_id).all())
+    return {oid: (n, float(sent or 0), float(acc or 0)) for oid, n, sent, acc in rows}
+
+
 def transfer_summary(db: Session, since=None, warehouse_id=None) -> dict:
     """Movements BETWEEN this company's own places — the transfer register,
     summarised for the dashboard.
@@ -482,10 +498,14 @@ def transfer_summary(db: Session, since=None, warehouse_id=None) -> dict:
     q = db.query(models.StockOutward)
     if since:
         q = q.filter(models.StockOutward.created_at >= since)
-    rows = q.all()
     if warehouse_id:
-        rows = [o for o in rows
-                if warehouse_id in (o.from_warehouse_id, o.to_warehouse_id)]
+        q = q.filter((models.StockOutward.from_warehouse_id == warehouse_id)
+                     | (models.StockOutward.to_warehouse_id == warehouse_id))
+    SO = models.StockOutward
+    # the five columns this reads, not every note as a full object
+    rows = q.with_entities(SO.id, SO.status, SO.from_warehouse_id,
+                           SO.to_warehouse_id, SO.to_store_id).all()
+    line_totals = outward_line_totals(db, q)       # {id: (lines, sent, accepted)}
 
     per = {}
 
@@ -498,7 +518,7 @@ def transfer_summary(db: Session, since=None, warehouse_id=None) -> dict:
     totals = {"transfers": 0, "to_store": 0, "dispatch": 0,
               "qty_moved": 0.0, "in_transit": 0.0}
     for o in rows:
-        qty = float(o.total_qty or 0)
+        _, qty, accepted = line_totals.get(o.id, (0, 0.0, 0.0))
         kind = ("transfer" if o.to_warehouse_id
                 else "store" if o.to_store_id else "dispatch")
         totals[{"transfer": "transfers", "store": "to_store",
@@ -516,7 +536,7 @@ def transfer_summary(db: Session, since=None, warehouse_id=None) -> dict:
         if kind == "transfer":
             b = slot(o.to_warehouse_id)
             if o.status == "received":
-                b["received"] += float(o.total_accepted or 0)
+                b["received"] += accepted
             else:
                 # dispatched and not yet accepted — standing in neither building
                 b["in_transit"] += qty

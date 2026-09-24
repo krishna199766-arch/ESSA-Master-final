@@ -771,8 +771,12 @@ function renderLogin(){
   };
 }
 
+// With no search, what is in stock (what can be picked up and detailed); with one,
+// the whole catalogue, capped. The unfiltered list is every product ever received
+// — hundreds of thousands on a full store — and a phone cannot load it.
 async function fetchProducts(){
-  try{ S.products = await api(`/api/inventory/products?status=${S.status}&q=${encodeURIComponent(S.q)}`); }
+  const scope = S.q ? 'limit=500' : 'held=1&limit=500';
+  try{ S.products = await api(`/api/inventory/products?status=${S.status}&${scope}&q=${encodeURIComponent(S.q)}`); }
   catch(e){ S.products=[]; toast('Could not load products'); }
 }
 
@@ -805,7 +809,7 @@ async function resolveCode(code){
   const c=(code||'').trim(); if(!c) return null;
   try{ return await api(`/api/inventory/lookup?code=${encodeURIComponent(c)}`); }
   catch(e){}
-  try{ const data=await api(`/api/inventory/products?status=all&q=${encodeURIComponent(c)}`);
+  try{ const data=await api(`/api/inventory/products?status=all&limit=50&q=${encodeURIComponent(c)}`);
     return data.find(p=>(p.barcode||'')===c)||data[0]||null;
   }catch(e){ return null; }
 }
@@ -1127,9 +1131,15 @@ async function renderGrnList(){
 
 async function paintGrns(){
   const el=document.getElementById('glist'); if(el) el.innerHTML='<div class="spin"></div>';
-  try{ S.grns=await api('/api/purchases'); }catch(e){ S.grns=[]; toast('Could not load goods receipts'); }
-  const rows=S.grns.filter(g=>S.grnFilter==='all'||g.status===S.grnFilter);
-  const cnt=document.getElementById('gcnt'); if(cnt) cnt.textContent=rows.length+' shown';
+  // Filtered and capped by the server: every receipt ever made is tens of
+  // thousands on a full store — megabytes a phone had to fetch and then filter.
+  let total=0;
+  try{ const r=await api(`/api/purchases?limit=200&status=${encodeURIComponent(S.grnFilter)}`);
+       S.grns=r.rows||[]; total=r.total||0; }
+  catch(e){ S.grns=[]; toast('Could not load goods receipts'); }
+  const rows=S.grns;
+  const cnt=document.getElementById('gcnt');
+  if(cnt) cnt.textContent=rows.length<total ? `newest ${rows.length} of ${total}` : rows.length+' shown';
   const list=document.getElementById('glist'); if(!list) return;
   if(!rows.length){
     list.innerHTML=`<p style="color:var(--muted);text-align:center;margin-top:30px;line-height:1.5">${

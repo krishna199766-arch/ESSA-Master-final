@@ -178,7 +178,7 @@ def _window(start, end, col):
     return where, params
 
 
-def sales_by_product(start=None, end=None):
+def sales_by_product(start=None, end=None, product_ids=None):
     """Net sales per WAREHOUSE product id, optionally inside a date window.
 
     Returns {product_id: {"qty", "amount", "bills", "last_sold"}} where amount is
@@ -189,8 +189,21 @@ def sales_by_product(start=None, end=None):
     the original bill fell in: a campaign that sold nine kurtis and took two back
     within its own dates realised seven, and a return keyed in after the campaign
     closed does not reach back and change what that campaign achieved.
+
+    `product_ids` limits the answer to those warehouse products. Dead stock only
+    asks about the few thousand lines that hold stock; unlimited, this sent back
+    a row for every product the shop ever sold — hundreds of thousands.
     """
+    only = ""
+    if product_ids is not None:
+        ids = sorted({int(i) for i in product_ids})
+        if not ids:
+            return {}
+        # integers, so inlined safely — and one literal list rather than thousands
+        # of bound parameters, which SQLite caps
+        only = " AND p.warehouse_id IN (" + ",".join(map(str, ids)) + ")"
     sold_where, sold_params = _window(start, end, "i.invoice_date")
+    sold_where += only
     sold = _rows(
         "SELECT p.warehouse_id, SUM(ii.quantity), SUM(ii.line_total),"
         "       COUNT(DISTINCT i.id), MAX(i.invoice_date) "
@@ -201,6 +214,7 @@ def sales_by_product(start=None, end=None):
         " GROUP BY p.warehouse_id", sold_params)
 
     ret_where, ret_params = _window(start, end, "cn.created_at")
+    ret_where += only
     returned = _rows(
         "SELECT p.warehouse_id, SUM(ci.quantity), SUM(ci.line_total) "
         "FROM " + q("credit_note_items") + " ci "

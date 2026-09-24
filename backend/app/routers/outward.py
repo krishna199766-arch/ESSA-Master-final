@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict
-from sqlalchemy import func, select
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from ..database import get_db
 from .. import models
 from ..services import outward as svc
+from ..services import stock_locations as stock_loc
 from ..services import stock_view
 from ..services import scope
 
@@ -75,19 +76,9 @@ def _totals(o):
 
 
 def _totals_by_note(db: Session, q):
-    """The same four figures for every note `q` selects, in ONE grouped query.
-
-    The list used to read them off each note's `lines`, which is a lazy load per
-    note: seventeen thousand round trips and 450k line objects to print four
-    numbers a row. The arithmetic mirrors StockOutward.total_qty/total_accepted/
-    shortfall exactly — accepted falls back to qty, and only a received note has
-    accepted anything."""
-    L = models.StockOutwardLine
-    ids = q.with_entities(models.StockOutward.id).subquery()
-    rows = (db.query(L.outward_id, func.count(L.id), func.sum(func.coalesce(L.qty, 0)),
-                     func.sum(func.coalesce(L.accepted_qty, L.qty, 0)))
-            .filter(L.outward_id.in_(select(ids.c.id))).group_by(L.outward_id).all())
-    return {oid: (n, float(sent or 0), float(acc or 0)) for oid, n, sent, acc in rows}
+    """The list's figures for every note `q` selects, in one grouped query rather
+    than a lazy load of each note's lines — see stock_locations.outward_line_totals."""
+    return stock_loc.outward_line_totals(db, q)
 
 
 def _out(o, db: Session = None, with_lines=False, totals=None):

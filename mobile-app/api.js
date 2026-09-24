@@ -25,13 +25,17 @@ export function makeApi(server, token) {
     // inventory
     options: () => get('/api/inventory/product-options'),
     categories: () => get('/api/masters/categories'),
-    products: (status, q) => get(`/api/inventory/products?status=${status}&q=${encodeURIComponent(q || '')}`),
+    // No search: what is in stock. A search: the whole catalogue, capped. The
+    // unfiltered list is every product ever received — too big for a phone.
+    products: (status, q) => get(`/api/inventory/products?status=${status}&${q ? '' : 'held=1&'}limit=500&q=${encodeURIComponent(q || '')}`),
     product: (id) => get(`/api/inventory/products/${id}`),
     detail: (id, body) => send('POST', `/api/inventory/products/${id}/detail`, body),
     summary: () => get('/api/inventory/summary'),
 
     // purchases / GRN
-    purchases: () => get('/api/purchases'),
+    // one filter, newest 200 — { rows, total, counts }. Every GRN ever made is
+    // megabytes on a full store.
+    purchases: (status) => get(`/api/purchases?limit=200&status=${encodeURIComponent(status || 'all')}`),
     purchase: (id) => get(`/api/purchases/${id}`),
     // the attribute breakdown of one billed line — [] clears it
     setSplits: (lineId, rows) => send('PUT', `/api/purchases/lines/${lineId}/splits`, { rows }),

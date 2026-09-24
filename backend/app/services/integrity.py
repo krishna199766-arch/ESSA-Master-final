@@ -74,53 +74,79 @@ def _purchase_status(db):
     return {pid: st for pid, st in db.query(models.Purchase.id, models.Purchase.status)}
 
 
-def _product_links(db):
+def _only(query, column, product_ids):
+    """`query` narrowed to `product_ids` (a select of ids, or a list) when given."""
+    return query if product_ids is None else query.filter(column.in_(product_ids))
+
+
+def _product_links(db, product_ids=None):
     """{product_id: {purchase_id, …}} from GRN lines, breakdown rows and movements.
 
     All three, because a product can be reachable by any of them: a plain line
     holds `product_id`, a broken-down bundle holds it on the variant instead, and
-    the ledger records it even when a later edit clears both."""
+    the ledger records it even when a later edit clears both.
+
+    DISTINCT pairs: a product is on many lines of one receipt, and every line of
+    a big store is over a million rows where the pairs are a fraction of that."""
+    PL, S, SM = models.PurchaseLine, models.PurchaseLineSplit, models.StockMovement
     links = {}
     def add(pid, purchase_id):
         if pid:
             links.setdefault(pid, set()).add(purchase_id)
 
-    for pid, purchase_id in db.query(
-            models.PurchaseLine.product_id, models.PurchaseLine.purchase_id):
+    for pid, purchase_id in _only(db.query(PL.product_id, PL.purchase_id),
+                                  PL.product_id, product_ids).distinct():
         add(pid, purchase_id)
-    for pid, purchase_id in db.query(
-            models.PurchaseLineSplit.product_id, models.PurchaseLine.purchase_id).join(
-            models.PurchaseLine, models.PurchaseLineSplit.line_id == models.PurchaseLine.id):
+    for pid, purchase_id in _only(db.query(S.product_id, PL.purchase_id).join(
+            PL, S.line_id == PL.id), S.product_id, product_ids).distinct():
         add(pid, purchase_id)
-    for pid, ref_id in db.query(
-            models.StockMovement.product_id, models.StockMovement.ref_id).filter(
-            models.StockMovement.ref_type.in_(GRN_REF_TYPES)):
+    for pid, ref_id in _only(db.query(SM.product_id, SM.ref_id).filter(
+            SM.ref_type.in_(GRN_REF_TYPES)), SM.product_id, product_ids).distinct():
         add(pid, ref_id)
     return links
 
 
-def _movement_count(db):
+def _movement_count(db, product_ids=None):
     """{product_id: how many ledger rows} — a product with movements has history
-    of its own and is never treated as debris, whatever created it."""
-    out = {}
-    for pid, in db.query(models.StockMovement.product_id):
-        out[pid] = out.get(pid, 0) + 1
-    return out
+    of its own and is never treated as debris, whatever created it. Counted in
+    the database: reading the ledger row by row to count it was the slowest part
+    of every inventory screen on a full store."""
+    from sqlalchemy import func
+    SM = models.StockMovement
+    q = _only(db.query(SM.product_id, func.count(SM.id)), SM.product_id, product_ids)
+    return dict(q.group_by(SM.product_id).all())
 
 
-def _received_qty(db):
+def _received_qty(db, product_ids=None):
     """{product_id: net quantity received from GRNs}.
 
     Inwards less the reversals of any unpost — i.e. what the receipts still say
     this SKU took in, which is the number of piece identities that should exist.
     Outward, return and adjustment rows are deliberately not counted: they move
     stock, they do not un-receive it."""
-    out = {}
-    for pid, delta in db.query(
-            models.StockMovement.product_id, models.StockMovement.qty_delta).filter(
-            models.StockMovement.ref_type.in_(GRN_REF_TYPES)):
-        out[pid] = out.get(pid, 0.0) + float(delta or 0)
-    return {k: _round(v) for k, v in out.items()}
+    from sqlalchemy import func
+    SM = models.StockMovement
+    q = _only(db.query(SM.product_id, func.sum(func.coalesce(SM.qty_delta, 0)))
+              .filter(SM.ref_type.in_(GRN_REF_TYPES)), SM.product_id, product_ids)
+    return {pid: _round(v) for pid, v in q.group_by(SM.product_id).all()}
+
+
+def posted_product_ids(db):
+    """A SELECT of the ids of products traceable to a POSTED GRN — by a line, a
+    breakdown row or a GRN movement, the same three routes `_product_links`
+    follows. For filtering and totalling in the database; `Context.product_state`
+    gives the same answer (POSTED) one product at a time."""
+    from sqlalchemy import select, union
+    P, PL, S, SM = (models.Purchase, models.PurchaseLine,
+                    models.PurchaseLineSplit, models.StockMovement)
+    posted = P.status == "posted"
+    return union(
+        select(PL.product_id).join(P, P.id == PL.purchase_id)
+        .where(posted, PL.product_id.isnot(None)),
+        select(S.product_id).join(PL, S.line_id == PL.id).join(P, P.id == PL.purchase_id)
+        .where(posted, S.product_id.isnot(None)),
+        select(SM.product_id).join(P, P.id == SM.ref_id)
+        .where(SM.ref_type.in_(GRN_REF_TYPES), posted, SM.product_id.isnot(None)))
 
 
 def _state(purchase_ids, statuses, has_history):
@@ -138,12 +164,18 @@ class Context:
     """Everything the checks need, gathered in a handful of queries so a scan of
     the whole inventory stays a handful of queries."""
 
-    def __init__(self, db):
+    def __init__(self, db, product_ids=None):
+        """`product_ids` (a select of ids, or a list) limits the per-product maps
+        to those products — for a screen that shows a few thousand of them. Every
+        lookup below is keyed by product, so the answers for those products are
+        the same; asking about any OTHER product would read it as untraced, so a
+        scoped Context must only be asked about what it was scoped to."""
         self.db = db
+        self.product_ids = product_ids
         self.statuses = _purchase_status(db)
-        self.links = _product_links(db)
-        self.history = _movement_count(db)
-        self.received = _received_qty(db)
+        self.links = _product_links(db, product_ids)
+        self.history = _movement_count(db, product_ids)
+        self.received = _received_qty(db, product_ids)
         self._adopted = {}
         self._units = None          # {product_id: [unit rows by seq]} once preloaded
         self._countable = {}        # uom → countable, asked once per pass
@@ -157,8 +189,9 @@ class Context:
         real catalogue — and loaded every code as a full ORM object besides."""
         U = models.ProductUnit
         by = {}
-        for row in self.db.query(U.id, U.product_id, U.purchase_id, U.seq).order_by(
-                U.product_id, U.seq):
+        q = _only(self.db.query(U.id, U.product_id, U.purchase_id, U.seq),
+                  U.product_id, self.product_ids)     # a scoped Context reads its own
+        for row in q.order_by(U.product_id, U.seq):
             by.setdefault(row.product_id, []).append(row)
         self._units = by
 

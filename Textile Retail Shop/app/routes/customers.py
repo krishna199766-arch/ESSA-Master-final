@@ -36,6 +36,11 @@ def _fill(c):
     c.anniversary = _date("anniversary")
 
 
+#: How many customers the list draws with no search, and with one.
+CUSTOMERS_LISTED = 200
+CUSTOMERS_SEARCHED = 500
+
+
 @customers_bp.route("/")
 @login_required
 def list_customers():
@@ -45,8 +50,14 @@ def list_customers():
         query = query.filter(
             (Customer.name.ilike(f"%{q}%")) | (Customer.phone.ilike(f"%{q}%")) | (Customer.email.ilike(f"%{q}%"))
         )
-    customers = query.order_by(Customer.name).all()
-    return render_template("customers/list.html", customers=customers, q=q)
+    # Capped: a store with years of billing has six-figure customer counts, and
+    # drawing every one of them was an 80 MB page that took over a minute. The
+    # count is shown with the cap, and the search reaches everybody.
+    cap = CUSTOMERS_SEARCHED if q else CUSTOMERS_LISTED
+    total = query.count()
+    customers = query.order_by(Customer.name).limit(cap).all()
+    return render_template("customers/list.html", customers=customers, q=q,
+                           total=total, capped=total > len(customers))
 
 
 @customers_bp.route("/new", methods=["GET", "POST"])

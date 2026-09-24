@@ -412,21 +412,26 @@ def low_stock(limit=50, item=None):
     if not available():
         return {"available": False, "count": 0, "rows": []}
     f_sql, f_params, _w = item_filter(item) if item else ("", [], [])
+    frm = (" FROM " + _t("products") + " p "
+           "LEFT JOIN " + _t("categories") + " cat ON cat.id = p.category_id "
+           "LEFT JOIN " + _t("floors") + " f ON f.id = p.floor_id "
+           # `active IS NULL OR active = ?` rather than COALESCE(active, 1): the
+           # column is an integer on SQLite and a boolean on Postgres, and COALESCE
+           # of a boolean with 1 is a type error there.
+           "WHERE (p.active IS NULL OR p.active = ?) "
+           "AND COALESCE(p.stock_qty,0) <= COALESCE(p.reorder_level,0)" + f_sql)
+    params = [True] + f_params
+    # Counted in the database, and only the rows asked for fetched. With no
+    # reorder levels set, every product at zero stock qualifies — most of a
+    # 400k catalogue — and all of it was read to show eight lines and a count.
+    count = pos_sales._rows("SELECT COUNT(*)" + frm, params)
     rows = pos_sales._rows(
         "SELECT p.sku, p.name, COALESCE(cat.name,''), p.stock_qty, p.reorder_level, "
-        "       COALESCE(f.name,'') "
-        "FROM " + _t("products") + " p "
-        "LEFT JOIN " + _t("categories") + " cat ON cat.id = p.category_id "
-        "LEFT JOIN " + _t("floors") + " f ON f.id = p.floor_id "
-        # `active IS NULL OR active = ?` rather than COALESCE(active, 1): the
-        # column is an integer on SQLite and a boolean on Postgres, and COALESCE of
-        # a boolean with 1 is a type error there.
-        "WHERE (p.active IS NULL OR p.active = ?) "
-        "AND COALESCE(p.stock_qty,0) <= COALESCE(p.reorder_level,0)"
-        + f_sql + " ORDER BY p.stock_qty ASC, p.name", [True] + f_params)
+        "       COALESCE(f.name,'')" + frm + " ORDER BY p.stock_qty ASC, p.name"
+        + (f" LIMIT {int(limit)}" if limit else ""), params)
     out = [{"sku": r[0], "product": r[1], "category": r[2], "stock": _num(r[3]),
             "reorder_level": _num(r[4]), "floor": r[5] or None} for r in rows]
-    return {"available": True, "count": len(out), "rows": out[:limit] if limit else out}
+    return {"available": True, "count": int(count[0][0]) if count else 0, "rows": out}
 
 
 def stock(floor_ids=None, item=None):

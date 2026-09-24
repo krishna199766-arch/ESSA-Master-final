@@ -325,7 +325,16 @@ def print_labels(template_id: int = 0, items: str = "", units: str = "",
     if not t:
         raise HTTPException(400, "no label template — create one in Label Designer first")
 
-    ctx = integrity.Context(db)
+    # Provenance for the products on this sheet only — every one this request
+    # can name, by piece code, by product for its pieces, or by product — rather
+    # than for the whole catalogue.
+    unit_ids = [int(x) for x in units.split(",") if x.strip().isdigit()]
+    on_sheet = {pid for pid, _n in _parse_items(items)}
+    on_sheet |= {int(x) for x in unit_products.split(",") if x.strip().isdigit()}
+    if unit_ids:
+        on_sheet |= {pid for (pid,) in db.query(models.ProductUnit.product_id).filter(
+            models.ProductUnit.id.in_(unit_ids)) if pid}
+    ctx = integrity.Context(db, product_ids=sorted(on_sheet))
     rows = []            # [(product, unit_or_None, copies)]
 
     if units.strip() or unit_products.strip():

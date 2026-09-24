@@ -974,16 +974,22 @@ def inventory_summary(db):
     stock; including them would put a valuation on goods no receipt ever brought
     in. The excluded count is reported rather than swallowed, so a number that
     quietly dropped can always be explained."""
+    # Counted and summed in the database over the posted-GRN products. Loading
+    # every product and its provenance to add these up took over a minute and a
+    # half on a full store, and the dashboard asks for it on every open.
+    from sqlalchemy import Numeric, cast, func, select
     from . import integrity
-    ctx = integrity.Context(db)
-    everything = db.query(models.Product).all()
-    products = [p for p in everything if ctx.product_state(p) == integrity.POSTED]
-    excluded = len(everything) - len(products)
-    total_value = round(sum(p.stock_value for p in products), 2)
-    total_units = sum(p.stock_qty or 0 for p in products)
+    P = models.Product
+    posted = integrity.posted_product_ids(db).subquery()
+    qty = func.coalesce(P.stock_qty, 0)
+    # Product.stock_value is round(qty * avg_cost, 2) per product; summed the same way
+    value = func.round(cast(qty * func.coalesce(P.avg_cost, 0), Numeric), 2)
+    n, units, total = (db.query(func.count(P.id), func.sum(qty), func.sum(value))
+                         .filter(P.id.in_(select(posted.c.product_id))).one())
+    everything = db.query(func.count(P.id)).scalar() or 0
     return {
-        "product_count": len(products),
-        "total_units": total_units,
-        "total_stock_value": total_value,
-        "excluded_products": excluded,
+        "product_count": int(n or 0),
+        "total_units": float(units or 0),
+        "total_stock_value": round(float(total or 0), 2),
+        "excluded_products": everything - int(n or 0),
     }

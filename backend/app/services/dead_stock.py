@@ -27,7 +27,11 @@ building without anybody buying them; counting that as life would hide a line
 that was rejected precisely because it wasn't selling.
 """
 import datetime as dt
+import json
+import threading
+import time
 from sqlalchemy import func, select
+from sqlalchemy.orm import joinedload
 
 from .. import models, runtime
 from . import pos_sales, stock_view
@@ -199,6 +203,17 @@ def _price_base(p):
     return float(p.avg_cost or 0), "cost"
 
 
+#: Seconds one computation of product_rows is shared. The Dead Stock screen asks
+#: for its summary, register and alerts together, and the Command Center and the
+#: notification bell ask too — each was a fresh read of every stocked product,
+#: the ledger and the till. Ages are counted in days; a minute behind changes
+#: nothing anyone could see. A change of rules is a different key, so it shows
+#: at once.
+ROWS_TTL = 60
+_rows_cache = {}
+_rows_lock = threading.Lock()
+
+
 def product_rows(db, rules=None, today=None, include_healthy=True):
     """Every stocked product with its age, its band and what clearing it realises.
 
@@ -206,18 +221,48 @@ def product_rows(db, rules=None, today=None, include_healthy=True):
     are each read once and indexed, because this is the read behind the
     register, the dashboard, the alerts and the worksheet, and all four are
     opened at a desk while somebody waits.
+
+    Shared for ROWS_TTL seconds between callers asking the same question. Each
+    caller gets its own copies of the rows, so one screen's edits cannot leak
+    into another's.
     """
     rules = rules or get_rules()
     today = today or dt.date.today()
-    # One read of the till: last_sold_index() is this same query filtered, and
-    # calling both read every invoice line in the shop twice.
-    sales = pos_sales.sales_by_product()
+    key = (json.dumps(rules, sort_keys=True, default=str), today.isoformat(),
+           include_healthy, _data_mark(db))
+    with _rows_lock:
+        hit = _rows_cache.get(key)
+        if hit is None or time.monotonic() - hit[0] > ROWS_TTL:
+            _rows_cache.clear()            # one live key at a time; old days/rules go
+            hit = (time.monotonic(), _product_rows(db, rules, today, include_healthy))
+            _rows_cache[key] = hit
+    return [dict(r) for r in hit[1]]
+
+
+def _data_mark(db):
+    """Changes whenever stock moves, a product is added, or the till bills or
+    takes a return — so a shared result is never reused across any of those.
+    Four MAX(id) reads on primary keys: next to nothing."""
+    mv = db.query(func.max(models.StockMovement.id)).scalar()
+    pr = db.query(func.max(models.Product.id)).scalar()
+    till = pos_sales._rows("SELECT (SELECT MAX(id) FROM " + pos_sales.q("invoices") + "), "
+                           "(SELECT MAX(id) FROM " + pos_sales.q("credit_notes") + ")", [])
+    return (mv, pr, tuple(till[0]) if till else None)
+
+
+def _product_rows(db, rules, today, include_healthy):
+    products = (db.query(models.Product)
+                  .options(joinedload(models.Product.primary_supplier))
+                  .filter(models.Product.stock_qty > 0).all())
+    # One read of the till, for these products only: last_sold_index() is this
+    # same query filtered (calling both read the shop twice), and unlimited it
+    # returned every product the shop ever sold to use a few thousand of them.
+    sales = pos_sales.sales_by_product(product_ids=[p.id for p in products])
     sold = {pid: row["last_sold"] for pid, row in sales.items() if row.get("last_sold")}
     stocked = select(models.Product.id).where(models.Product.stock_qty > 0)
     moves = _movement_index(db, only=stocked)
 
     rows = []
-    products = db.query(models.Product).filter(models.Product.stock_qty > 0).all()
     for p in products:
         last_sold = sold.get(p.id)
         mv = moves.get(p.id, {})
@@ -531,9 +576,12 @@ def campaign_lines(db, campaign):
     never stored on the line. Storing them would make this a second stock record
     that has to be kept in step with the first, and the first is the one the
     business runs on."""
-    window = pos_sales.sales_by_product(campaign.starts_on, campaign.ends_on)
+    lines = campaign.lines
+    # the till's sales for THIS campaign's products, not for everything it sold
+    window = pos_sales.sales_by_product(campaign.starts_on, campaign.ends_on,
+                                        product_ids=[l.product_id for l in lines if l.product_id])
     out = []
-    for l in campaign.lines:
+    for l in lines:
         p = l.product
         sold = window.get(l.product_id) or {}
         sold_qty = round(float(sold.get("qty") or 0), 3)

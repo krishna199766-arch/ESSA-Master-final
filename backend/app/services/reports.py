@@ -63,15 +63,67 @@ def _r2(v):
 def _posted(db, date_from=None, date_to=None):
     """Posted GRNs, optionally within an invoice-date range.
 
-    Dates are stored ISO (services/dates.py), so this compares chronologically."""
-    q = db.query(models.Purchase).filter(models.Purchase.status == "posted")
-    rows = q.order_by(models.Purchase.invoice_date, models.Purchase.id).all()
+    Dates are stored ISO (services/dates.py), so this compares chronologically.
+
+    Yielded a batch at a time, each GRN arriving with its supplier, lines, line
+    products, breakdown rows (and their products) and shortages already read.
+    The reports walk exactly those, and read lazily it was several queries per
+    LINE — over a million on a full store."""
+    from sqlalchemy.orm import joinedload, selectinload
+    P, PL, S = models.Purchase, models.PurchaseLine, models.PurchaseLineSplit
+    heads = (db.query(P.id, P.invoice_date).filter(P.status == "posted")
+               .order_by(P.invoice_date, P.id).all())
     lo, hi = date_svc.to_iso(date_from), date_svc.to_iso(date_to)
     if lo or hi:
-        rows = [p for p in rows
-                if (d := date_svc.to_iso(p.invoice_date))
-                and (not lo or d >= lo) and (not hi or d <= hi)]
-    return rows
+        heads = [h for h in heads
+                 if (d := date_svc.to_iso(h.invoice_date))
+                 and (not lo or d >= lo) and (not hi or d <= hi)]
+    ids = [h.id for h in heads]
+    for i in range(0, len(ids), 300):
+        batch = ids[i:i + 300]
+        loaded = {p.id: p for p in db.query(P).options(
+            joinedload(P.supplier),
+            selectinload(P.lines).joinedload(PL.product),
+            selectinload(P.lines).selectinload(PL.splits).joinedload(S.product),
+            selectinload(P.lines).selectinload(PL.shortages)).filter(P.id.in_(batch))}
+        for pid in batch:
+            yield loaded[pid]
+
+
+def _eager(rel):
+    """Load a many-to-one (a supplier, say) in the same read as its rows — a
+    register that prints it per row otherwise asks for each one separately."""
+    from sqlalchemy.orm import joinedload
+    return joinedload(rel)
+
+
+def _in_window(value, lo, hi):
+    """The `(lo and (not d or d < lo)) or (hi and ...)` test the registers skip
+    rows with, inverted: True when `value` falls inside [lo, hi]."""
+    d = date_svc.to_iso(value)
+    return not ((lo and (not d or d < lo)) or (hi and (not d or d > hi)))
+
+
+def _outwards(db, query, keep=None):
+    """The notes `query` selects, in its order, that `keep(note)` accepts — a
+    batch at a time, each with its lines (and places) already read. The reports
+    total the lines of every note, and lazily that was a query per note: tens of
+    thousands on a full store.
+
+    `keep` is the report's own filter (its date window), applied BEFORE any line
+    is read: loading every note's lines and then keeping one month's made a
+    month's report slower than the per-note reads it replaced."""
+    from sqlalchemy.orm import joinedload, selectinload
+    SO = models.StockOutward
+    notes = [o for o in query.all() if keep is None or keep(o)]
+    for n in range(0, len(notes), 500):
+        batch = notes[n:n + 500]
+        (db.query(SO).options(
+            selectinload(SO.lines).joinedload(models.StockOutwardLine.product),
+            joinedload(SO.from_warehouse),
+            joinedload(SO.to_warehouse), joinedload(SO.to_store))
+           .filter(SO.id.in_([o.id for o in batch])).populate_existing().all())
+        yield from batch
 
 
 def _received_rows(purchase):
@@ -101,8 +153,11 @@ def _taxes(purchase):
 
 def stock_report(db):
     cols = ["sku", "supplier_barcode", "description", "hsn", "supplier", "uom", "stock_qty", "avg_cost", "stock_value"]
+    from sqlalchemy.orm import joinedload
     rows, tqty, tval = [], 0.0, 0.0
-    for p in db.query(models.Product).order_by(models.Product.description).all():
+    # supplier in the same read — lazily, a query per supplier
+    for p in (db.query(models.Product).options(joinedload(models.Product.primary_supplier))
+                .order_by(models.Product.description).all()):
         rows.append({"sku": p.sku, "supplier_barcode": p.barcode or "", "description": p.description,
                      "hsn": p.hsn or "", "supplier": p.primary_supplier.name if p.primary_supplier else "",
                      "uom": p.uom, "stock_qty": p.stock_qty, "avg_cost": round(p.avg_cost or 0, 2),
@@ -119,10 +174,14 @@ def stock_movement(db, kind=None, product_id=None):
     if product_id:
         q = q.filter(models.StockMovement.product_id == product_id)
     rows = []
-    for m in q.order_by(models.StockMovement.id).all():
-        prod = m.product
+    P = models.Product
+    # the product's two columns joined in, not a lazy load per product
+    for m, pid, sku, description in (q.add_columns(P.id, P.sku, P.description)
+                                       .outerjoin(P, P.id == models.StockMovement.product_id)
+                                       .order_by(models.StockMovement.id)):
+        found = pid is not None
         rows.append({"date": m.created_at.strftime("%Y-%m-%d") if m.created_at else "",
-                     "sku": prod.sku if prod else "", "description": prod.description if prod else "",
+                     "sku": sku if found else "", "description": description if found else "",
                      "kind": m.kind, "qty_delta": m.qty_delta, "rate": round(m.rate or 0, 2),
                      "balance_after": m.balance_after, "ref": f"{m.ref_type or ''} {m.ref_id or ''}".strip(),
                      "note": m.note or ""})
@@ -133,11 +192,23 @@ def stock_movement(db, kind=None, product_id=None):
 
 def purchase_register(db):
     cols = ["date", "supplier", "invoice_number", "taxable", "tax", "grand_total", "paid", "returns", "outstanding"]
+    from sqlalchemy import func
+    from sqlalchemy.orm import joinedload
     rows, tg, to = [], 0.0, 0.0
-    for p in db.query(models.Purchase).filter(models.Purchase.status == "posted").order_by(models.Purchase.invoice_date).all():
-        settled = pay.invoice_settled(db, p.id)
-        rets = pay.invoice_returns(db, p.id)
-        outstanding = pay.invoice_outstanding(db, p)
+    # pay.invoice_settled / invoice_returns / invoice_outstanding, for every
+    # invoice in two grouped reads instead of four queries per invoice — the
+    # same figures, rounded the same way
+    PA, PR = models.PaymentAllocation, models.PurchaseReturn
+    settled_by = dict(db.query(PA.purchase_id, func.sum(func.coalesce(PA.settled, 0)))
+                        .group_by(PA.purchase_id).all())
+    returns_by = dict(db.query(PR.purchase_id, func.sum(func.coalesce(PR.total, 0)))
+                        .filter(PR.status == "posted").group_by(PR.purchase_id).all())
+    for p in (db.query(models.Purchase).options(joinedload(models.Purchase.supplier))
+                .filter(models.Purchase.status == "posted")
+                .order_by(models.Purchase.invoice_date, models.Purchase.id).all()):
+        settled = round(float(settled_by.get(p.id) or 0), 2)
+        rets = round(float(returns_by.get(p.id) or 0), 2)
+        outstanding = round((p.grand_total or 0) - settled - rets, 2)
         rows.append({"date": p.invoice_date or "", "supplier": p.supplier.name if p.supplier else "",
                      "invoice_number": p.invoice_number, "taxable": round(p.taxable_total or 0, 2),
                      "tax": round(p.tax_total or 0, 2), "grand_total": round(p.grand_total or 0, 2),
@@ -149,7 +220,8 @@ def purchase_register(db):
 def purchase_return_register(db):
     cols = ["date", "code", "supplier", "invoice_number", "taxable", "tax", "total", "status"]
     rows, tt = [], 0.0
-    for r in db.query(models.PurchaseReturn).order_by(models.PurchaseReturn.id).all():
+    for r in (db.query(models.PurchaseReturn).options(_eager(models.PurchaseReturn.supplier))
+                .order_by(models.PurchaseReturn.id).all()):
         rows.append({"date": r.date or "", "code": r.code, "supplier": r.supplier.name if r.supplier else "",
                      "invoice_number": r.invoice_number or "", "taxable": round(r.taxable_total or 0, 2),
                      "tax": round(r.tax_total or 0, 2), "total": round(r.total or 0, 2), "status": r.status})
@@ -205,7 +277,8 @@ def supplier_pending_bills(db):
 def payments_register(db):
     cols = ["date", "receipt_no", "supplier", "mode", "ref_no", "gross", "discount", "tds", "debit", "paid"]
     rows, tp = [], 0.0
-    for p in db.query(models.Payment).order_by(models.Payment.id).all():
+    for p in (db.query(models.Payment).options(_eager(models.Payment.supplier))
+                .order_by(models.Payment.id).all()):
         rows.append({"date": p.date or "", "receipt_no": p.receipt_no,
                      "supplier": p.supplier.name if p.supplier else "", "mode": p.mode,
                      "ref_no": p.ref_no or "", "gross": round(p.gross_amount or 0, 2),
@@ -220,7 +293,8 @@ def product_master(db):
     rows = [{"sku": p.sku, "supplier_barcode": p.barcode or "", "description": p.description, "hsn": p.hsn or "",
              "uom": p.uom, "mrp": p.mrp or "", "avg_cost": round(p.avg_cost or 0, 2), "stock_qty": p.stock_qty,
              "supplier": p.primary_supplier.name if p.primary_supplier else ""}
-            for p in db.query(models.Product).order_by(models.Product.description).all()]
+            for p in db.query(models.Product).options(_eager(models.Product.primary_supplier))
+                          .order_by(models.Product.description).all()]
     return _rep(cols, rows, {"products": len(rows)})
 
 
@@ -402,26 +476,50 @@ def wh_entry_report(db, date_from=None, date_to=None):
     cols = ["grn_no", "posted_on", "invoice_date", "supplier", "invoice_number",
             "lines", "items", "billed_qty", "received_qty", "short_qty", "value",
             "status", "cartons"]
+    from sqlalchemy import func
+    from sqlalchemy.orm import joinedload, selectinload
+    PL = models.PurchaseLine
     rows, tb, tr, ts = [], 0.0, 0.0, 0.0
     lo, hi = date_svc.to_iso(date_from), date_svc.to_iso(date_to)
-    for p in db.query(models.Purchase).order_by(models.Purchase.id).all():
+    # Read in bulk, a batch of receipts at a time. Receipt by receipt, every
+    # line, every line's shortages and breakdown, and a carton count were each a
+    # query of their own — millions on a full store, and the report never came
+    # back. The arithmetic is unchanged; only how the rows are fetched.
+    cartons = dict(db.query(models.Bundle.purchase_id, func.count(models.Bundle.id))
+                     .group_by(models.Bundle.purchase_id).all())
+    keep = []
+    for p in (db.query(models.Purchase).options(joinedload(models.Purchase.supplier))
+                .order_by(models.Purchase.id).all()):
         d = date_svc.to_iso(p.invoice_date)
         if (lo and (not d or d < lo)) or (hi and (not d or d > hi)):
             continue
-        billed = sum(_f(l.qty) for l in p.lines)
-        recv = sum(l.received_qty for l in p.lines)
-        shorts = sum(_f(s.qty) for l in p.lines for s in l.shortages if s.claimable)
-        cartons = db.query(models.Bundle).filter(models.Bundle.purchase_id == p.id).count()
-        rows.append({"grn_no": p.grn_no or f"#{p.id}",
-                     "posted_on": p.posted_at.strftime("%Y-%m-%d") if p.posted_at else "",
-                     "invoice_date": p.invoice_date or "",
-                     "supplier": p.supplier.name if p.supplier else "",
-                     "invoice_number": p.invoice_number or "",
-                     "lines": len(p.lines), "items": len(_received_rows(p)),
-                     "billed_qty": round(billed, 2), "received_qty": round(recv, 2),
-                     "short_qty": round(shorts, 2), "value": _r2(p.grand_total),
-                     "status": p.status, "cartons": cartons})
-        tb += billed; tr += recv; ts += shorts
+        keep.append(p)
+    for i in range(0, len(keep), 500):
+        batch = keep[i:i + 500]
+        lines_of = defaultdict(list)
+        for l in (db.query(PL).options(selectinload(PL.shortages), selectinload(PL.splits))
+                    .filter(PL.purchase_id.in_([p.id for p in batch])).order_by(PL.id)):
+            lines_of[l.purchase_id].append(l)
+        for p in batch:
+            ls = lines_of.get(p.id, [])
+            billed = sum(_f(l.qty) for l in ls)
+            recv = sum(l.received_qty for l in ls)
+            shorts = sum(_f(s.qty) for l in ls for s in l.shortages if s.claimable)
+            # _received_rows(p)'s count: one per holder (a split line's variants,
+            # else the line) with a positive quantity — without loading products
+            items = sum(1 for l in ls
+                        for h in (l.splits if l.is_split else [l])
+                        if (_f(h.qty) if l.is_split else l.received_qty) > 0)
+            rows.append({"grn_no": p.grn_no or f"#{p.id}",
+                         "posted_on": p.posted_at.strftime("%Y-%m-%d") if p.posted_at else "",
+                         "invoice_date": p.invoice_date or "",
+                         "supplier": p.supplier.name if p.supplier else "",
+                         "invoice_number": p.invoice_number or "",
+                         "lines": len(ls), "items": items,
+                         "billed_qty": round(billed, 2), "received_qty": round(recv, 2),
+                         "short_qty": round(shorts, 2), "value": _r2(p.grand_total),
+                         "status": p.status, "cartons": cartons.get(p.id, 0)})
+            tb += billed; tr += recv; ts += shorts
     return _rep(cols, rows, {"receipts": len(rows), "billed_qty": round(tb, 2),
                              "received_qty": round(tr, 2), "short_qty": round(ts, 2)})
 
@@ -439,23 +537,40 @@ def stock_as_on(db, as_on=None):
     on = date_svc.to_iso(as_on) or date_svc.today()
     cols = ["sku", "description", "hsn", "uom", "supplier", "stock_qty",
             "avg_cost", "stock_value"]
-    rows, tq, tv = [], 0.0, 0.0
-    for p in db.query(models.Product).order_by(models.Product.description).all():
-        qty, avg = 0.0, 0.0
-        for mv in sorted(p.movements, key=lambda m: m.id):
-            when = mv.created_at.date().isoformat() if mv.created_at else None
-            if when and when > on:
-                continue
-            delta = _f(mv.qty_delta)
-            if delta > 0 and mv.kind == "inward":
-                nq = qty + delta
-                rate = _f(mv.rate)
-                avg = round(((qty * avg) + (delta * rate)) / nq, 4) if nq else rate
-                qty = nq
-            else:
-                qty = round(qty + delta, 3)
-        if round(qty, 3) == 0:
+    from sqlalchemy.orm import joinedload
+    SM, P = models.StockMovement, models.Product
+    # The ledger in one ordered read, replayed per product; then only the products
+    # still holding stock on that date are loaded. Product by product, each one's
+    # movements were a query of their own — hundreds of thousands on a full store.
+    state = {}                                   # product_id -> (qty, avg)
+    for pid, created_at, qty_delta, kind, mv_rate in (
+            db.query(SM.product_id, SM.created_at, SM.qty_delta, SM.kind, SM.rate)
+              .filter(SM.product_id.isnot(None)).order_by(SM.product_id, SM.id)):
+        when = created_at.date().isoformat() if created_at else None
+        if when and when > on:
             continue
+        qty, avg = state.get(pid, (0.0, 0.0))
+        delta = _f(qty_delta)
+        if delta > 0 and kind == "inward":
+            nq = qty + delta
+            rate = _f(mv_rate)
+            avg = round(((qty * avg) + (delta * rate)) / nq, 4) if nq else rate
+            qty = nq
+        else:
+            qty = round(qty + delta, 3)
+        state[pid] = (qty, avg)
+    held = {pid for pid, (qty, _a) in state.items() if round(qty, 3) != 0}
+    # the order the database sorts descriptions in — its collation, not Python's
+    order = [pid for (pid,) in db.query(P.id).order_by(P.description, P.id) if pid in held]
+    by_id = {}
+    for i in range(0, len(order), 5000):
+        for p in (db.query(P).options(joinedload(P.primary_supplier))
+                    .filter(P.id.in_(order[i:i + 5000]))):
+            by_id[p.id] = p
+    products = [by_id[pid] for pid in order]
+    rows, tq, tv = [], 0.0, 0.0
+    for p in products:
+        qty, avg = state[p.id]
         value = round(qty * avg, 2)
         rows.append({"sku": p.sku, "description": p.description, "hsn": p.hsn or "",
                      "uom": p.uom, "supplier": p.primary_supplier.name if p.primary_supplier else "",
@@ -473,14 +588,26 @@ def stock_transactions(db, date_from=None, date_to=None):
             "balance_after", "reference", "note"]
     lo, hi = date_svc.to_iso(date_from), date_svc.to_iso(date_to)
     rows, ti, to_ = [], 0.0, 0.0
-    for m in db.query(models.StockMovement).order_by(models.StockMovement.id).all():
+    SM, P = models.StockMovement, models.Product
+    # The product's two columns joined in, rather than a lazy load per product;
+    # and a date window narrowed in the database first (the exact test below
+    # still decides), so a month's report does not read the whole ledger.
+    q = (db.query(SM, P.id, P.sku, P.description).outerjoin(P, P.id == SM.product_id)
+           .order_by(SM.id))
+    if lo:
+        q = q.filter(SM.created_at >= dt.datetime.fromisoformat(lo))
+    if hi:
+        q = q.filter((SM.created_at < dt.datetime.fromisoformat(hi) + dt.timedelta(days=1))
+                     | SM.created_at.is_(None))
+    for m, pid, sku, description in q:
         when = m.created_at.date().isoformat() if m.created_at else ""
         if (lo and when < lo) or (hi and when > hi):
             continue
         delta = _f(m.qty_delta)
-        prod = m.product
-        rows.append({"date": when, "sku": prod.sku if prod else "",
-                     "description": prod.description if prod else "", "kind": m.kind,
+        found = pid is not None                  # `prod` in the old per-row lookup
+        rows.append({"date": when, "sku": sku if found else "",
+                     "description": description if found else "",
+                     "kind": m.kind,
                      "in_qty": round(delta, 3) if delta > 0 else "",
                      "out_qty": round(-delta, 3) if delta < 0 else "",
                      "rate": _r2(m.rate), "balance_after": m.balance_after,
@@ -663,7 +790,12 @@ def transfer_register(db, date_from=None, date_to=None, warehouse_id=None):
             "sent_qty", "accepted_qty", "short_qty", "value"]
     q = db.query(models.StockOutward)
     rows = []
-    for o in q.order_by(models.StockOutward.id.desc()).all():
+    def _wanted(o):
+        return not ((date_from and (o.date or "") < date_from)
+                    or (date_to and (o.date or "") > date_to)
+                    or (warehouse_id and int(warehouse_id) not in (
+                        o.from_warehouse_id, o.to_warehouse_id)))
+    for o in _outwards(db, q.order_by(models.StockOutward.id.desc()), keep=_wanted):
         if date_from and (o.date or "") < date_from:
             continue
         if date_to and (o.date or "") > date_to:
@@ -702,13 +834,17 @@ def transfer_register(db, date_from=None, date_to=None, warehouse_id=None):
 
 def warehouse_stock_analysis(db):
     """Warehouse stock cut by section and category — where the money is sitting."""
+    from sqlalchemy import select
     from . import integrity
-    ctx = integrity.Context(db)
+    # Only products holding stock can reach a row, so only they are read — and
+    # their provenance, rather than the whole catalogue's.
+    held = models.Product.stock_qty > 0
+    ctx = integrity.Context(db, product_ids=select(models.Product.id).where(held))
     cols = ["section", "category", "products", "units", "stock_value",
             "share_pct", "avg_cost", "undetailed"]
     agg = defaultdict(lambda: {"products": 0, "units": 0.0, "stock_value": 0.0,
                                "undetailed": 0})
-    for p in db.query(models.Product).all():
+    for p in db.query(models.Product).filter(held).all():
         if ctx.product_state(p) != integrity.POSTED or _f(p.stock_qty) <= 0:
             continue
         a = agg[(p.category_section or "(unmapped)", p.category or "(unmapped)")]
@@ -949,7 +1085,8 @@ def purchase_return_audit(db):
     cols = ["date", "code", "supplier", "invoice_number", "sku", "description",
             "kind", "qty", "grn_rate", "amount", "stock_moved", "status"]
     rows, tq, tv = [], 0.0, 0.0
-    for r in db.query(models.PurchaseReturn).order_by(models.PurchaseReturn.id).all():
+    for r in (db.query(models.PurchaseReturn).options(_eager(models.PurchaseReturn.supplier))
+                .order_by(models.PurchaseReturn.id).all()):
         for l in r.lines:
             if _f(l.qty) <= 0:
                 continue
@@ -980,7 +1117,8 @@ def outward_report(db, date_from=None, date_to=None):
             "received_by", "received_date"]
     lo, hi = date_svc.to_iso(date_from), date_svc.to_iso(date_to)
     rows, ts, ta = [], 0.0, 0.0
-    for o in db.query(models.StockOutward).order_by(models.StockOutward.id).all():
+    for o in _outwards(db, db.query(models.StockOutward).order_by(models.StockOutward.id),
+                       keep=lambda o: _in_window(o.date, lo, hi)):
         d = date_svc.to_iso(o.date)
         if (lo and (not d or d < lo)) or (hi and (not d or d > hi)):
             continue
@@ -1005,7 +1143,8 @@ def outward_details_report(db, date_from=None, date_to=None):
             "sent_qty", "accepted_qty", "short_qty", "rate", "value", "status"]
     lo, hi = date_svc.to_iso(date_from), date_svc.to_iso(date_to)
     rows, ts, tv = [], 0.0, 0.0
-    for o in db.query(models.StockOutward).order_by(models.StockOutward.id).all():
+    for o in _outwards(db, db.query(models.StockOutward).order_by(models.StockOutward.id),
+                       keep=lambda o: _in_window(o.date, lo, hi)):
         d = date_svc.to_iso(o.date)
         if (lo and (not d or d < lo)) or (hi and (not d or d > hi)):
             continue
@@ -1035,8 +1174,8 @@ def pending_inward_report(db):
             "value", "days_out"]
     today = dt.date.today()
     rows, tq = [], 0.0
-    for o in db.query(models.StockOutward).filter(
-            models.StockOutward.status == "posted").order_by(models.StockOutward.id).all():
+    for o in _outwards(db, db.query(models.StockOutward).filter(
+            models.StockOutward.status == "posted").order_by(models.StockOutward.id)):
         d = date_svc.parse(o.date)
         value = sum(_f(l.qty) * _f(l.rate) for l in o.lines)
         rows.append({"date": o.date or "", "code": o.code or f"#{o.id}",
@@ -1054,8 +1193,8 @@ def pending_outward_report(db):
     """Prepared and not yet dispatched — stock still here, already spoken for."""
     cols = ["date", "code", "to_destination", "packed_by", "lines", "qty", "value"]
     rows, tq = [], 0.0
-    for o in db.query(models.StockOutward).filter(
-            models.StockOutward.status == "draft").order_by(models.StockOutward.id).all():
+    for o in _outwards(db, db.query(models.StockOutward).filter(
+            models.StockOutward.status == "draft").order_by(models.StockOutward.id)):
         value = sum(_f(l.qty) * _f(l.rate) for l in o.lines)
         rows.append({"date": o.date or "", "code": o.code or f"#{o.id}",
                      "to_destination": o.to_destination or "",

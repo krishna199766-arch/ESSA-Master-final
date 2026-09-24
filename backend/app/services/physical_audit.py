@@ -219,13 +219,18 @@ def filter_options(db: Session, warehouse_id) -> dict:
     on these shelves, and a list carrying every brand the company has ever bought
     makes them scroll past choices that would return nothing.
     """
+    # Distinct values asked of the database, column by column. Loading every
+    # product this warehouse has ever held as a full object to collect them was
+    # the whole catalogue on a big store — minutes, for a filter panel.
     products = scope.products(db, db.query(models.Product), warehouse_id,
-                              include_zero=True).all()
+                              include_zero=True)
     out = {}
     for key, column in PRODUCT_FILTERS.items():
-        out[key] = sorted({(getattr(p, column) or "").strip() for p in products}
-                          - {""})
-    supplier_ids = {p.primary_supplier_id for p in products if p.primary_supplier_id}
+        col = getattr(models.Product, column)
+        out[key] = sorted({(v or "").strip() for (v,) in
+                           products.with_entities(col).distinct()} - {""})
+    supplier_ids = {sid for (sid,) in products.with_entities(
+        models.Product.primary_supplier_id).distinct() if sid}
     out["supplier"] = [
         {"id": s.id, "name": s.name} for s in db.query(models.Supplier)
         .filter(models.Supplier.id.in_(supplier_ids))
@@ -233,7 +238,7 @@ def filter_options(db: Session, warehouse_id) -> dict:
     out["company"] = [{"id": b.id, "name": b.name} for b in
                       db.query(models.Business).order_by(models.Business.name).all()]
     where = _location_map(db, warehouse_id)
-    held = {p.id for p in products}
+    held = {pid for (pid,) in products.with_entities(models.Product.id)}
     out["location"] = sorted({v for k, v in where.items() if k in held and v})
     return out
 

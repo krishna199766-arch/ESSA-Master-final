@@ -441,16 +441,29 @@ def import_item(row, cat_ids=None):
     return p
 
 
-def sync_warehouse_items():
-    """Bring the shop's catalogue in line with the warehouse. Safe to call always."""
+def sync_warehouse_items(rows=None):
+    """Bring the shop's catalogue in line with the warehouse. Safe to call always.
+
+    `rows` syncs just those warehouse items (see sync_if_stale); without it,
+    every item the warehouse holds."""
     _ensure_columns()
-    rows = fetch_items()
+    whole = rows is None
+    if whole:
+        rows = fetch_items()
     if not rows:
         return {"added": 0, "updated": 0, "total": Product.query.count(),
                 "available": available()}
 
     cat_ids = _category_ids()
-    existing = {p.sku: p for p in Product.query.all()}
+    if whole:
+        existing = {p.sku: p for p in Product.query.all()}
+    else:
+        # only the shop products these rows name, not the whole catalogue
+        skus = [r["sku"] for r in rows]
+        existing = {}
+        for i in range(0, len(skus), 500):
+            for p in Product.query.filter(Product.sku.in_(skus[i:i + 500])):
+                existing[p.sku] = p
     added = updated = 0
     for row in rows:
         p = existing.get(row["sku"])
@@ -500,6 +513,9 @@ def _warehouse_signature():
     # removed — which is what this is asked to notice. It costs one aggregate
     # query rather than a stat(), so `sync_if_stale` is no longer free; it is
     # still far cheaper than the sync it decides against.
+    #
+    # Tagged "rows" and carrying the raw values, because they are also the marks
+    # an incremental sync reads from — see sync_if_stale.
     con = _connect()
     if con is None:
         return None
@@ -507,11 +523,40 @@ def _warehouse_signature():
         row = con.execute(
             "SELECT count(*) AS n, max(id) AS mx, max(detailed_at) AS det FROM products"
         ).fetchone()
-        return (row["n"], row["mx"], str(row["det"])) if row else None
+        return ("rows", row["n"], row["mx"], row["det"]) if row else None
     except SQLAlchemyError:
         return None
     finally:
         con.close()
+
+
+def _changed_since(max_id, detailed_at):
+    """Warehouse items added after `max_id`, or detailed at or after
+    `detailed_at` — what moved the row signature. None when unreadable."""
+    con = _connect()
+    if con is None:
+        return None
+    try:
+        if detailed_at is None:
+            return con.execute("SELECT * FROM products WHERE id > ? ORDER BY id",
+                               (max_id or 0,)).fetchall()
+        # >= not >: two items detailed in the same instant must not lose one
+        return con.execute(
+            "SELECT * FROM products WHERE id > ? OR detailed_at >= ? ORDER BY id",
+            (max_id or 0, detailed_at)).fetchall()
+    except SQLAlchemyError:
+        return None
+    finally:
+        con.close()
+
+
+#: Seconds between two looks at a Postgres warehouse. Each look is an aggregate
+#: over every product (tens of milliseconds on a full catalogue) and it ran before
+#: EVERY page of the shop. A detail posted from the phone now shows within this
+#: many seconds instead of on the very next click; a scan of an item the shop has
+#: not seen yet still imports it on the spot (resolve_scan), whatever this says.
+ROW_CHECK_EVERY = 10
+_last_check = 0.0
 
 
 def sync_if_stale():
@@ -520,12 +565,33 @@ def sync_if_stale():
     This is what puts a detail posted from the mobile app into the shop without
     waiting for a restart: the next page load sees the file has moved and pulls
     the change in. When nothing has changed it costs a stat() and returns.
+
+    On Postgres, after the first full sync only the items that moved the
+    signature are read — new ones, and ones detailed since — rather than the
+    whole catalogue again. On a store of 400k items the full re-read took
+    minutes, and it ran on whichever till page happened to come next after a
+    GRN was posted.
     """
-    global _last_signature
+    global _last_signature, _last_check
+    import time
+    if _last_signature is not None and _last_signature[:1] == ("rows",):
+        now = time.monotonic()
+        if now - _last_check < ROW_CHECK_EVERY:
+            return None
+        _last_check = now
     signature = _warehouse_signature()
     if signature is None or signature == _last_signature:
         return None
-    result = sync_warehouse_items()
+    prev = _last_signature
+    rows = None
+    if prev is not None and prev[:1] == ("rows",) and signature[:1] == ("rows",):
+        rows = _changed_since(prev[2], prev[3])
+    if rows is not None:
+        # nothing new or re-detailed (a removal only moves the count): the shop
+        # never deletes on a sync, so there is nothing to do but note it
+        result = sync_warehouse_items(rows) if rows else None
+    else:
+        result = sync_warehouse_items()
     _last_signature = signature
     return result
 

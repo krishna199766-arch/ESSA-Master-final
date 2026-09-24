@@ -53,7 +53,11 @@ def pending(supplier_id: Optional[int] = None, db: Session = Depends(get_db)):
 
 @router.get("")
 def list_payments(db: Session = Depends(get_db)):
-    return [_pay_out(p) for p in db.query(models.Payment).order_by(models.Payment.id.desc()).all()]
+    from sqlalchemy.orm import joinedload
+    # supplier in the same read — lazily it was one query per supplier
+    return [_pay_out(p) for p in db.query(models.Payment)
+            .options(joinedload(models.Payment.supplier))
+            .order_by(models.Payment.id.desc()).all()]
 
 
 @router.post("")

@@ -155,8 +155,12 @@ def outstanding(db, supplier_name=None):
                              func.sum(models.PurchaseReturn.total))
                       .filter(models.PurchaseReturn.status == "posted")
                       .group_by(models.PurchaseReturn.purchase_id).all())
+    from sqlalchemy.orm import joinedload
     out = []
-    for p in db.query(models.Purchase).filter(models.Purchase.status == "posted").all():
+    # the supplier in the same read — lazily, each distinct supplier was its own
+    # query, four thousand of them on a full store
+    for p in (db.query(models.Purchase).options(joinedload(models.Purchase.supplier))
+                .filter(models.Purchase.status == "posted").all()):
         owed = round(float(p.grand_total or 0) - float(settled.get(p.id) or 0)
                      - float(returned.get(p.id) or 0), 2)
         if owed <= 0.01:
@@ -304,7 +308,7 @@ def activity(db, limit=15, allowed=None, at=None, hide_screens=()):
 # ---------------------------------------------------------------------------
 #  The whole screen
 # ---------------------------------------------------------------------------
-def places(db, day, scope_ids=None, at=None, allotted=None):
+def places(db, day, scope_ids=None, at=None, allotted=None, transfers=None):
     """The business by PLACE: one row per warehouse, per store and per till.
 
     The tiles above answer "how did the company do today"; this answers "which of
@@ -326,8 +330,9 @@ def places(db, day, scope_ids=None, at=None, allotted=None):
         b = bought.setdefault(p.warehouse_id, {"grns": 0, "value": 0.0})
         b["grns"] += 1
         b["value"] = round(b["value"] + float(p.grand_total or 0), 2)
+    # `transfers` is the overview's own read of the same summary, when it has one
     transit = {w["warehouse_id"]: w for w in
-               stock_loc.transfer_summary(db)["warehouses"]}
+               (transfers or stock_loc.transfer_summary(db))["warehouses"]}
 
     stores, by_wh = [], {}
     for s in loc_svc.store_rows(db):
@@ -398,7 +403,9 @@ def overview(db, allowed=None, day=None, with_users=True, warehouse_id=None):
     dn = _safe(lambda: debit_notes_between(db, start, end, allowed), {"count": 0, "value": 0})
     stock_rows = _safe(lambda: stock_loc.warehouse_totals(db, warehouse_ids=allowed), [])
     moves = _safe(lambda: movement_between(db, start, end, allowed), {"inward": 0, "outward": 0})
-    transit = _safe(lambda: stock_loc.transfer_summary(db)["totals"].get("in_transit", 0), 0)
+    # read once: the tile wants its total, `places` its per-warehouse rows
+    transfers = _safe(lambda: stock_loc.transfer_summary(db), None)
+    transit = (transfers or {}).get("totals", {}).get("in_transit", 0) if transfers else 0
     pend = _safe(lambda: pending_grns(db, allowed), {"count": 0, "value": 0, "documents": 0})
     owed = _safe(lambda: outstanding(db), [])
     dead = _safe(lambda: dead_counts(db), {"days": 90, "count": 0, "value": 0, "critical": 0, "rows": []})
@@ -461,7 +468,7 @@ def overview(db, allowed=None, day=None, with_users=True, warehouse_id=None):
         "top_floors": top_floors,
         # One row per warehouse, per store and per till — the drill-down the
         # tiles above always provoke. See `places`.
-        "places": _safe(lambda: places(db, day, scope_ids, at, allotted),
+        "places": _safe(lambda: places(db, day, scope_ids, at, allotted, transfers),
                         {"warehouses": [], "stores": [], "counters": [], "cashiers": [],
                          "picker": []}),
         "low_stock": low.get("rows", []),

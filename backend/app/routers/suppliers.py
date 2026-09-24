@@ -8,8 +8,16 @@ router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
 @router.get("")
 def list_suppliers(db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    from sqlalchemy.orm import selectinload
+    # Profiles in one extra read and documents counted in one grouped read.
+    # Per supplier, both were a lazy load each — two queries times four thousand
+    # suppliers on a full store, over a minute for this list.
+    docs = dict(db.query(models.Document.supplier_id, func.count(models.Document.id))
+                  .group_by(models.Document.supplier_id).all())
     out = []
-    for s in db.query(models.Supplier).order_by(models.Supplier.name).all():
+    for s in (db.query(models.Supplier).options(selectinload(models.Supplier.profiles))
+                .order_by(models.Supplier.name).all()):
         p = s.active_profile
         out.append({
             "id": s.id, "name": s.name, "gstin": s.gstin, "state": s.state,
@@ -18,7 +26,7 @@ def list_suppliers(db: Session = Depends(get_db)):
             "profile_samples": p.sample_count if p else 0,
             "tax_mode": p.tax_mode if p else None,
             "has_tds": p.has_tds if p else False,
-            "document_count": len(s.documents),
+            "document_count": docs.get(s.id, 0),
         })
     return out
 
