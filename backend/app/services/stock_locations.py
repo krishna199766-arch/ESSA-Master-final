@@ -407,7 +407,11 @@ def warehouse_totals(db: Session, warehouse_ids=None) -> list:
 
 def stock_at(db: Session, warehouse_id, limit=None) -> list:
     """Every product standing in one warehouse, most valuable first."""
+    from sqlalchemy.orm import joinedload
+    # the product in the same read — lazily it was a query per product held,
+    # and the warehouse dashboard waited minutes on it
     rows = (db.query(models.StockBalance)
+              .options(joinedload(models.StockBalance.product))
               .filter(models.StockBalance.warehouse_id == warehouse_id,
                       models.StockBalance.qty > TOLERANCE).all())
     out = []
