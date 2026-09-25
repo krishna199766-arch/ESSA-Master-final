@@ -276,7 +276,9 @@ class Context:
 def product_report(db, product, ctx=None):
     """Provenance, piece-code arithmetic and print eligibility for one product."""
     from . import units as unit_svc
-    ctx = ctx or Context(db)
+    # one product's provenance, not the whole catalogue's — printing a single
+    # label built the full picture first and took ten seconds on a full store
+    ctx = ctx or Context(db, product_ids=[product.id])
     state = ctx.product_state(product)
     rows = ctx.units_for(product.id)
     live = [u for u in rows if ctx.unit_state(u) == POSTED]

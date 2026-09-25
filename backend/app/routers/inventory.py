@@ -546,7 +546,8 @@ def unit_label(uid: int, db: Session = Depends(get_db)):
     u = db.get(models.ProductUnit, uid)
     if not u:
         raise HTTPException(404, "piece not found")
-    if integrity.Context(db).unit_state(u) != integrity.POSTED:
+    # this piece's product's provenance only
+    if integrity.Context(db, product_ids=[u.product_id]).unit_state(u) != integrity.POSTED:
         raise HTTPException(400, f"{u.code} belongs to no posted GRN — it is a left-over "
                                  f"code, not a garment. Run Inventory Repair.")
     unit_svc.mark_printed(db, [u])
@@ -573,8 +574,9 @@ def unit_labels(ids: str = "", product_id: int = 0, db: Session = Depends(get_db
         want = [int(x) for x in ids.split(",") if x.strip().isdigit()]
         rows = q.filter(models.ProductUnit.id.in_(want)).all()
         rows.sort(key=lambda u: want.index(u.id))
-        # a hand-picked selection still may not include a dead code
-        ctx = integrity.Context(db)
+        # a hand-picked selection still may not include a dead code — checked
+        # against the provenance of the products these pieces belong to
+        ctx = integrity.Context(db, product_ids=sorted({u.product_id for u in rows if u.product_id}))
         dead = [u.code for u in rows if ctx.unit_state(u) != integrity.POSTED]
         if dead:
             raise HTTPException(400, f"{len(dead)} of these piece codes belong to no "
@@ -585,7 +587,7 @@ def unit_labels(ids: str = "", product_id: int = 0, db: Session = Depends(get_db
         p = db.get(models.Product, product_id)
         if not p:
             raise HTTPException(404, "product not found")
-        ctx = integrity.Context(db)
+        ctx = integrity.Context(db, product_ids=[product_id])   # this product only
         ok, why = integrity.can_print(db, p, ctx)
         if not ok:
             raise HTTPException(400, why)

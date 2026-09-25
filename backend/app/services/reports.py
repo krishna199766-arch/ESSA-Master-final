@@ -104,6 +104,62 @@ def _in_window(value, lo, hi):
     return not ((lo and (not d or d < lo)) or (hi and (not d or d > hi)))
 
 
+class _LightLine:
+    __slots__ = ("qty", "rate", "accepted_qty")
+
+    def __init__(self, qty, rate, accepted_qty):
+        self.qty, self.rate, self.accepted_qty = qty, rate, accepted_qty
+
+
+class _NoteView:
+    """A dispatch note with its lines as three plain columns each, for the
+    registers that only total them. Everything else is the note's own; the three
+    totals are StockOutward's properties, the same arithmetic on the same values."""
+
+    def __init__(self, note, lines):
+        self._note, self.lines = note, lines
+
+    def __getattr__(self, name):
+        return getattr(self._note, name)
+
+    @property
+    def total_qty(self):
+        return sum((l.qty or 0) for l in self.lines)
+
+    @property
+    def total_accepted(self):
+        if self._note.status != "received":
+            return 0.0
+        return sum((l.accepted_qty if l.accepted_qty is not None else (l.qty or 0))
+                   for l in self.lines)
+
+    @property
+    def shortfall(self):
+        if self._note.status != "received":
+            return 0.0
+        return round(self.total_qty - self.total_accepted, 3)
+
+
+def _outwards_light(db, query, keep=None):
+    """_outwards for the registers that only count and total lines: each note's
+    lines read as (qty, rate, accepted) columns rather than as objects with their
+    products — the difference between minutes and seconds over every dispatch."""
+    from sqlalchemy.orm import joinedload
+    SO, SL = models.StockOutward, models.StockOutwardLine
+    notes = [o for o in query.options(joinedload(SO.from_warehouse), joinedload(SO.to_warehouse),
+                                      joinedload(SO.to_store)).all()
+             if keep is None or keep(o)]
+    for n in range(0, len(notes), 2000):
+        batch = notes[n:n + 2000]
+        lines = defaultdict(list)
+        for oid, qty, rate, acc in (db.query(SL.outward_id, SL.qty, SL.rate, SL.accepted_qty)
+                                      .filter(SL.outward_id.in_([o.id for o in batch]))
+                                      .order_by(SL.id)):
+            lines[oid].append(_LightLine(qty, rate, acc))
+        for o in batch:
+            yield _NoteView(o, lines.get(o.id, []))
+
+
 def _outwards(db, query, keep=None):
     """The notes `query` selects, in its order, that `keep(note)` accepts — a
     batch at a time, each with its lines (and places) already read. The reports
@@ -476,15 +532,15 @@ def wh_entry_report(db, date_from=None, date_to=None):
     cols = ["grn_no", "posted_on", "invoice_date", "supplier", "invoice_number",
             "lines", "items", "billed_qty", "received_qty", "short_qty", "value",
             "status", "cartons"]
-    from sqlalchemy import func
-    from sqlalchemy.orm import joinedload, selectinload
+    from sqlalchemy import case, func
+    from sqlalchemy.orm import joinedload
     PL = models.PurchaseLine
     rows, tb, tr, ts = [], 0.0, 0.0, 0.0
     lo, hi = date_svc.to_iso(date_from), date_svc.to_iso(date_to)
-    # Read in bulk, a batch of receipts at a time. Receipt by receipt, every
-    # line, every line's shortages and breakdown, and a carton count were each a
-    # query of their own — millions on a full store, and the report never came
-    # back. The arithmetic is unchanged; only how the rows are fetched.
+    # Receipt by receipt, every line, every line's shortages and breakdown, and a
+    # carton count were each a query of their own — millions on a full store, and
+    # the report never came back. Now: cartons and per-line totals in grouped
+    # reads (below); the arithmetic is unchanged.
     cartons = dict(db.query(models.Bundle.purchase_id, func.count(models.Bundle.id))
                      .group_by(models.Bundle.purchase_id).all())
     keep = []
@@ -494,32 +550,48 @@ def wh_entry_report(db, date_from=None, date_to=None):
         if (lo and (not d or d < lo)) or (hi and (not d or d > hi)):
             continue
         keep.append(p)
-    for i in range(0, len(keep), 500):
-        batch = keep[i:i + 500]
-        lines_of = defaultdict(list)
-        for l in (db.query(PL).options(selectinload(PL.shortages), selectinload(PL.splits))
-                    .filter(PL.purchase_id.in_([p.id for p in batch])).order_by(PL.id)):
-            lines_of[l.purchase_id].append(l)
-        for p in batch:
-            ls = lines_of.get(p.id, [])
-            billed = sum(_f(l.qty) for l in ls)
-            recv = sum(l.received_qty for l in ls)
-            shorts = sum(_f(s.qty) for l in ls for s in l.shortages if s.claimable)
-            # _received_rows(p)'s count: one per holder (a split line's variants,
-            # else the line) with a positive quantity — without loading products
-            items = sum(1 for l in ls
-                        for h in (l.splits if l.is_split else [l])
-                        if (_f(h.qty) if l.is_split else l.received_qty) > 0)
-            rows.append({"grn_no": p.grn_no or f"#{p.id}",
-                         "posted_on": p.posted_at.strftime("%Y-%m-%d") if p.posted_at else "",
-                         "invoice_date": p.invoice_date or "",
-                         "supplier": p.supplier.name if p.supplier else "",
-                         "invoice_number": p.invoice_number or "",
-                         "lines": len(ls), "items": items,
-                         "billed_qty": round(billed, 2), "received_qty": round(recv, 2),
-                         "short_qty": round(shorts, 2), "value": _r2(p.grand_total),
-                         "status": p.status, "cartons": cartons.get(p.id, 0)})
-            tb += billed; tr += recv; ts += shorts
+    # Per line, the database adds up its shortages (signed: excess counts in,
+    # short/damaged out, as GrnShortage.signed_qty) and its breakdown rows; the
+    # per-receipt arithmetic below is the model's own, on those figures. Loading
+    # every line, shortage and split as objects was 1.2M lines on a full store.
+    SH, SP = models.GrnShortage, models.PurchaseLineSplit
+    claim = SH.kind.in_(SH.CLAIMABLE_KINDS)
+    sh = (db.query(SH.line_id.label("line_id"),
+                   func.sum(case((SH.kind == "excess", func.coalesce(SH.qty, 0)),
+                                 else_=-func.coalesce(SH.qty, 0))).label("signed"),
+                   func.sum(case((claim, func.coalesce(SH.qty, 0)), else_=0)).label("claim"))
+            .group_by(SH.line_id).subquery())
+    sp = (db.query(SP.line_id.label("line_id"), func.count(SP.id).label("n"),
+                   func.sum(case((func.coalesce(SP.qty, 0) > 0, 1), else_=0)).label("pos"))
+            .group_by(SP.line_id).subquery())
+    wanted = {p.id for p in keep}
+    per = defaultdict(lambda: [0, 0, 0.0, 0.0, 0.0])      # lines, items, billed, recv, shorts
+    lines_q = (db.query(PL.purchase_id, PL.qty, sh.c.signed, sh.c.claim, sp.c.n, sp.c.pos)
+                 .outerjoin(sh, sh.c.line_id == PL.id).outerjoin(sp, sp.c.line_id == PL.id))
+    if len(wanted) <= 5000:            # a date window: only its receipts' lines
+        lines_q = lines_q.filter(PL.purchase_id.in_(sorted(wanted)))
+    for purchase_id, qty, signed, claimed, n_split, n_pos in lines_q:
+        if purchase_id not in wanted:
+            continue
+        a = per[purchase_id]
+        received = round(_f(qty) + float(signed or 0), 3)     # PurchaseLine.received_qty
+        a[0] += 1
+        a[1] += int(n_pos or 0) if n_split else (1 if received > 0 else 0)
+        a[2] += _f(qty)
+        a[3] += received
+        a[4] += float(claimed or 0)
+    for p in keep:
+        n_lines, items, billed, recv, shorts = per.get(p.id, (0, 0, 0.0, 0.0, 0.0))
+        rows.append({"grn_no": p.grn_no or f"#{p.id}",
+                     "posted_on": p.posted_at.strftime("%Y-%m-%d") if p.posted_at else "",
+                     "invoice_date": p.invoice_date or "",
+                     "supplier": p.supplier.name if p.supplier else "",
+                     "invoice_number": p.invoice_number or "",
+                     "lines": n_lines, "items": items,
+                     "billed_qty": round(billed, 2), "received_qty": round(recv, 2),
+                     "short_qty": round(shorts, 2), "value": _r2(p.grand_total),
+                     "status": p.status, "cartons": cartons.get(p.id, 0)})
+        tb += billed; tr += recv; ts += shorts
     return _rep(cols, rows, {"receipts": len(rows), "billed_qty": round(tb, 2),
                              "received_qty": round(tr, 2), "short_qty": round(ts, 2)})
 
@@ -648,20 +720,34 @@ def stock_by_location(db):
 
     agg = defaultdict(lambda: {"documents": set(), "products": set(),
                                "qty": 0.0, "value": 0.0})
-    for o in db.query(models.StockOutward).filter(
-            models.StockOutward.status.in_(("posted", "received"))).all():
+    # Notes, then their lines, as plain columns — not each note's `lines` loaded
+    # one note at a time (seventeen thousand queries on a full store).
+    SO, SL = models.StockOutward, models.StockOutwardLine
+    stores = {s.id: s.name for s in db.query(models.Store)}
+    where = {}                                   # note id -> the row it counts under
+    for oid, to_wh, to_store, dest in (db.query(SO.id, SO.to_warehouse_id, SO.to_store_id,
+                                               SO.to_destination)
+                                         .filter(SO.status.in_(("posted", "received")))):
         # A warehouse-to-warehouse transfer is NOT a destination row: both ends
         # are warehouses and both already appear above as balances. Counting it
         # here as well would report the same goods twice, once as stock held and
         # once as stock sent away.
-        if o.to_warehouse_id:
+        if to_wh:
             continue
-        a = agg[o.to_store.name if o.to_store else (o.to_destination or "(unnamed)")]
-        a["documents"].add(o.id)
-        for l in o.lines:
-            a["products"].add(l.product_id)
-            a["qty"] += _f(l.qty)
-            a["value"] += _f(l.qty) * _f(l.rate)
+        loc = stores[to_store] if to_store in stores else (dest or "(unnamed)")
+        where[oid] = loc
+        agg[loc]["documents"].add(oid)
+    for oid, product_id, qty, rate in (db.query(SL.outward_id, SL.product_id, SL.qty, SL.rate)
+                                         .join(SO, SO.id == SL.outward_id)
+                                         .filter(SO.status.in_(("posted", "received")))
+                                         .order_by(SL.id)):
+        loc = where.get(oid)
+        if loc is None:
+            continue
+        a = agg[loc]
+        a["products"].add(product_id)
+        a["qty"] += _f(qty)
+        a["value"] += _f(qty) * _f(rate)
     for loc, a in sorted(agg.items()):
         rows.append({"location": loc, "kind": "store", "direction": "dispatched to",
                      "documents": len(a["documents"]), "products": len(a["products"]),
@@ -795,7 +881,7 @@ def transfer_register(db, date_from=None, date_to=None, warehouse_id=None):
                     or (date_to and (o.date or "") > date_to)
                     or (warehouse_id and int(warehouse_id) not in (
                         o.from_warehouse_id, o.to_warehouse_id)))
-    for o in _outwards(db, q.order_by(models.StockOutward.id.desc()), keep=_wanted):
+    for o in _outwards_light(db, q.order_by(models.StockOutward.id.desc()), keep=_wanted):
         if date_from and (o.date or "") < date_from:
             continue
         if date_to and (o.date or "") > date_to:
@@ -1117,7 +1203,7 @@ def outward_report(db, date_from=None, date_to=None):
             "received_by", "received_date"]
     lo, hi = date_svc.to_iso(date_from), date_svc.to_iso(date_to)
     rows, ts, ta = [], 0.0, 0.0
-    for o in _outwards(db, db.query(models.StockOutward).order_by(models.StockOutward.id),
+    for o in _outwards_light(db, db.query(models.StockOutward).order_by(models.StockOutward.id),
                        keep=lambda o: _in_window(o.date, lo, hi)):
         d = date_svc.to_iso(o.date)
         if (lo and (not d or d < lo)) or (hi and (not d or d > hi)):
@@ -1174,7 +1260,7 @@ def pending_inward_report(db):
             "value", "days_out"]
     today = dt.date.today()
     rows, tq = [], 0.0
-    for o in _outwards(db, db.query(models.StockOutward).filter(
+    for o in _outwards_light(db, db.query(models.StockOutward).filter(
             models.StockOutward.status == "posted").order_by(models.StockOutward.id)):
         d = date_svc.parse(o.date)
         value = sum(_f(l.qty) * _f(l.rate) for l in o.lines)
@@ -1193,7 +1279,7 @@ def pending_outward_report(db):
     """Prepared and not yet dispatched — stock still here, already spoken for."""
     cols = ["date", "code", "to_destination", "packed_by", "lines", "qty", "value"]
     rows, tq = [], 0.0
-    for o in _outwards(db, db.query(models.StockOutward).filter(
+    for o in _outwards_light(db, db.query(models.StockOutward).filter(
             models.StockOutward.status == "draft").order_by(models.StockOutward.id)):
         value = sum(_f(l.qty) * _f(l.rate) for l in o.lines)
         rows.append({"date": o.date or "", "code": o.code or f"#{o.id}",
