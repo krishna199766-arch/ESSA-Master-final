@@ -330,8 +330,17 @@ def grn_shortage_register(db):
 def supplier_pending_bills(db):
     cols = ["supplier", "gstin", "pending_bills", "outstanding"]
     rows, tot = [], 0.0
-    for s in db.query(models.Supplier).order_by(models.Supplier.name).all():
-        bills = pay.pending_bills(db, s.id)
+    # pay.pending_bills once, grouped by supplier — called per supplier it read
+    # every payment and return again for each of four thousand suppliers
+    supplier_of = dict(db.query(models.Purchase.id, models.Purchase.supplier_id)
+                         .filter(models.Purchase.status == "posted"))
+    by_supplier = defaultdict(list)
+    for b in pay.pending_bills(db, None):
+        sid = supplier_of.get(b["purchase_id"])
+        if sid is not None:
+            by_supplier[sid].append(b)
+    for s in db.query(models.Supplier).order_by(models.Supplier.name, models.Supplier.id).all():
+        bills = by_supplier.get(s.id)
         if not bills:
             continue
         out = round(sum(b["outstanding"] for b in bills), 2)
@@ -379,11 +388,13 @@ def tax_master(db):
     """HSN-wise summary: how many products, current stock value under each HSN."""
     cols = ["hsn", "products", "stock_qty", "stock_value"]
     agg = defaultdict(lambda: {"products": 0, "stock_qty": 0.0, "stock_value": 0.0})
-    for p in db.query(models.Product).all():
-        h = p.hsn or "(none)"
+    # three columns per product, not every product as a full object
+    P = models.Product
+    for hsn, qty, cost in db.query(P.hsn, P.stock_qty, P.avg_cost):
+        h = hsn or "(none)"
         agg[h]["products"] += 1
-        agg[h]["stock_qty"] += p.stock_qty or 0
-        agg[h]["stock_value"] += p.stock_value
+        agg[h]["stock_qty"] += qty or 0
+        agg[h]["stock_value"] += round((qty or 0) * (cost or 0), 2)   # Product.stock_value
     rows = [{"hsn": h, "products": v["products"], "stock_qty": round(v["stock_qty"], 2),
              "stock_value": round(v["stock_value"], 2)} for h, v in sorted(agg.items())]
     return _rep(cols, rows, {"hsn_codes": len(rows)})
@@ -1154,8 +1165,12 @@ def section_wise_purchase_return(db):
     """What went back, by section — the mirror of the buying split."""
     cols = ["section", "category", "debit_notes", "items", "qty", "value"]
     agg = defaultdict(lambda: {"notes": set(), "items": 0, "qty": 0.0, "value": 0.0})
-    for r in db.query(models.PurchaseReturn).filter(
-            models.PurchaseReturn.status == "posted").all():
+    from sqlalchemy.orm import joinedload, selectinload
+    # each return's lines, and each line's product, read with the returns
+    for r in (db.query(models.PurchaseReturn)
+                .options(selectinload(models.PurchaseReturn.lines)
+                         .joinedload(models.PurchaseReturnLine.product))
+                .filter(models.PurchaseReturn.status == "posted").all()):
         for l in r.lines:
             if _f(l.qty) <= 0:
                 continue
