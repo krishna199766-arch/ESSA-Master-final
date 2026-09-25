@@ -751,6 +751,8 @@ export const api = {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ document_id, rows }) }).then(J),
   lrList: () => fetch('/api/lr').then(J),
+  // the dashboard's LR figures over the whole register: { total, pending, unlinked }
+  lrSummary: () => fetch('/api/lr/summary').then(J),
   lrGet: (id) => fetch(`/api/lr/${id}`).then(J),
   // key in ONE consignment (the LR Entry form's Save / Save&Next)
   lrCreate: (body) => fetch('/api/lr', {

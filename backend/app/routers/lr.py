@@ -411,6 +411,28 @@ def list_lr(received: str = "all", limit: int = 500, db: Session = Depends(get_d
     return [_row_out(e) for e in rows]
 
 
+@router.get("/summary")
+def lr_summary(db: Session = Depends(get_db),
+               wid: Optional[int] = Depends(scope.current)):
+    """The dashboard's three LR figures, counted over the whole register.
+
+    The dashboard used to fetch the list and count it — but the list stops at
+    500 rows, so on a register of tens of thousands the counts were of the
+    newest 500 only, and fetching them was the slowest part of opening it.
+    Same scope as the list; `pending` is not received by anyone (the list's
+    `!received_by`), `unlinked` has no invoice matched (`!matched`)."""
+    from sqlalchemy import case, func
+    E = models.LREntry
+    q = scope.lr_entries(db.query(E), wid)
+    total, pending, unlinked = q.with_entities(
+        func.count(E.id),
+        func.sum(case(((E.received_by.is_(None)) | (E.received_by == ""), 1), else_=0)),
+        func.sum(case(((E.matched.is_(None)) | (E.matched == False), 1), else_=0)),  # noqa: E712
+    ).one()
+    return {"total": int(total or 0), "pending": int(pending or 0),
+            "unlinked": int(unlinked or 0)}
+
+
 @router.get("/search")
 def search(q: str = "", supplier: str = "", transport: str = "", received: str = "all",
            status: str = "all", date_from: str = "", date_to: str = "",

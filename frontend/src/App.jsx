@@ -16107,14 +16107,16 @@ function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStoc
       // the GRN figures, not every GRN — the full list was 17 MB on a big store
       api.purchasesSummary(), api.inventorySummary(), api.listOutwards('posted'),
       api.listOutwards('draft'), api.pendingBills(), api.listReturns(),
-      api.lrList(), api.listSuppliers(), api.notifications(), api.deadStockSummary(),
+      // LR counts over the whole register — the list stops at 500 rows
+      api.lrSummary(), api.listSuppliers(), api.notifications(), api.deadStockSummary(),
     ]).then((r) => {
       const v = (i, fb) => (r[i].status === 'fulfilled' ? r[i].value : fb)
       setPartial(r.some((x) => x.status === 'rejected'))
       setD({
         grns: v(0, { drafts: [], recent: [], posted: 0, short_lines: 0, short_value: 0 }),
         stock: v(1, {}), transit: v(2, []), outDrafts: v(3, []),
-        bills: v(4, []), returns: v(5, []), lr: v(6, []), suppliers: v(7, []),
+        bills: v(4, []), returns: v(5, []),
+        lr: v(6, { total: 0, pending: 0, unlinked: 0 }), suppliers: v(7, []),
         // The same feed the bell reads. One call rather than a second pass for
         // the dead-stock tile: the notices already carry it, and two reads of
         // one queue is two chances to print two different numbers for it.
@@ -16135,8 +16137,8 @@ function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStoc
   const grnPostedCount = d.grns.posted || 0
   const shortLines = d.grns.short_lines || 0
   const shortValue = d.grns.short_value || 0
-  const lrPending = d.lr.filter((e) => !e.received_by).length
-  const lrUnlinked = d.lr.filter((e) => !e.matched).length
+  const lrPending = d.lr.pending || 0
+  const lrUnlinked = d.lr.unlinked || 0
   const payable = sum(d.bills, (b) => b.outstanding)
   const overdue = d.bills.filter((b) => (b.days || 0) > 30)
   const retDrafts = d.returns.filter((r) => r.status === 'draft').length
@@ -16295,7 +16297,7 @@ function Dashboard({ modules, go, company, docs, refreshDocs, user, openDeadStoc
             <span>Posted GRNs <b>{grnPostedCount.toLocaleString('en-IN')}</b></span>
             <span>Suppliers <b>{d.suppliers.length}</b></span>
             <span>Documents <b>{docs.length}</b></span>
-            <span>LR entries <b>{d.lr.length}</b></span>
+            <span>LR entries <b>{(d.lr.total || 0).toLocaleString('en-IN')}</b></span>
             {d.stock.excluded_products > 0 && <span title="Records not traceable to a posted GRN — debris, or kept at zero after an unpost. They are not stock, so they are not valued.">
               Excluded from stock <b>{d.stock.excluded_products}</b></span>}
           </div>
