@@ -325,6 +325,9 @@ html.in-frame .brand-nav .nav-icon-btn:hover { color: var(--brand) !important; b
 html.in-frame .brand-nav .navbar-toggler:focus { box-shadow: 0 0 0 2px var(--accent); }
 html.in-frame .brand-nav .navbar-toggler { margin-left: auto; padding: .25rem .5rem; }
 html.in-frame .brand-nav .frame-title { display: inline-flex; }
+/* The module dropdown duplicates the Essa sidebar inside the frame. The list
+   stays (empty) so its me-auto still pushes the user chip to the right. */
+html.in-frame .brand-nav .module-switcher > li { display: none; }
 .brand-nav .frame-title { display: none; align-items: center; gap: .375rem; font-size: .6875rem;
   font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-right: .75rem; white-space: nowrap; }
 html.in-frame main.container-fluid { max-width: none; padding: 1rem 1.25rem 1.5rem; }

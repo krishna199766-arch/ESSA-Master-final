@@ -44,9 +44,11 @@
          you are is how someone loses the screen and opens the menu to find out.
          Built from app/modules.py — the same list the dashboard's cards use.
          Standalone it is a header control; inside the Essa frame, a breadcrumb
-         chip on the white sub-bar. #}
+         chip on the white sub-bar — hidden there, since the Essa sidebar already
+         lists every Store screen and two menus for one set of screens is one
+         too many. #}
       <span class="frame-title" aria-hidden="true"><i class="bi bi-shop"></i> Store</span>
-      <ul class="navbar-nav me-auto">
+      <ul class="navbar-nav me-auto module-switcher">
         <li class="nav-item dropdown">
           <a class="nav-link nav-ctl dropdown-toggle d-flex align-items-center gap-2" href="#"
              data-bs-toggle="dropdown" aria-expanded="false">
