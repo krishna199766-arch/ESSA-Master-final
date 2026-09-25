@@ -751,6 +751,8 @@ export const api = {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ document_id, rows }) }).then(J),
   lrList: () => fetch('/api/lr').then(J),
+  // one page of the WHOLE register — { rows, total }; limit 0 = every entry
+  lrPage: ({ limit, offset }) => fetch('/api/lr' + qs({ paged: 'true', limit, offset })).then(J),
   // the dashboard's LR figures over the whole register: { total, pending, unlinked }
   lrSummary: () => fetch('/api/lr/summary').then(J),
   lrGet: (id) => fetch(`/api/lr/${id}`).then(J),

@@ -397,7 +397,8 @@ def _filtered(db, received="all", q="", supplier="", transport="",
 
 
 @router.get("")
-def list_lr(received: str = "all", limit: int = 500, db: Session = Depends(get_db),
+def list_lr(received: str = "all", limit: int = 500, offset: int = 0,
+            paged: bool = False, db: Session = Depends(get_db),
             wid: Optional[int] = Depends(scope.current)):
     """The register, newest first. `received=pending|received` filters by whether
     the warehouse has taken the consignment in — that's what the phone app lists,
@@ -405,9 +406,25 @@ def list_lr(received: str = "all", limit: int = 500, db: Session = Depends(get_d
 
     Narrowed to consignments coming to the warehouse this call is made inside;
     rows booked before workspaces existed have no warehouse and stay on every
-    register. See services/scope."""
-    rows = scope.lr_entries(_filtered(db, received=received), wid).order_by(
-        models.LREntry.id.desc()).limit(max(1, min(limit, 2000))).all()
+    register. See services/scope.
+
+    `paged=true` returns one page of the WHOLE register — `{rows, total}`, with
+    `offset`, and `limit=0` for every entry. The plain list stops at the newest
+    500 (2,000 at most), which on a register of tens of thousands left most of
+    it out of reach of the desk screen."""
+    from sqlalchemy.orm import joinedload, selectinload
+    # each row prints its attachments and its order — read with the rows rather
+    # than one query per row, which a full register ("All") made tens of thousands
+    q = scope.lr_entries(_filtered(db, received=received), wid).options(
+        selectinload(models.LREntry.attachments),
+        joinedload(models.LREntry.purchase_order)).order_by(models.LREntry.id.desc())
+    if paged:
+        total = q.count()
+        q = q.offset(max(0, offset))
+        if limit > 0:
+            q = q.limit(limit)
+        return {"rows": [_row_out(e) for e in q.all()], "total": total}
+    rows = q.limit(max(1, min(limit, 2000))).all()
     return [_row_out(e) for e in rows]
 
 

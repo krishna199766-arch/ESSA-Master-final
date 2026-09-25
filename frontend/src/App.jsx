@@ -7978,9 +7978,11 @@ function LREntryView({ toast }) {
   const [docId, setDocId] = useState(null)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const [saved, setSaved] = useState([])
-  const refresh = useCallback(() => api.lrList().then(setSaved), [])
-  useEffect(() => { refresh() }, [refresh])
+  // The saved register, a page at a time from the server — all of it. Fetched
+  // whole it stopped at the newest 500, and a register of tens of thousands
+  // could not reach the rest.
+  const savedPage = useServerPaged(({ limit, offset }) => api.lrPage({ limit, offset }), 'lr', 25)
+  const refresh = savedPage.reload
   // A consignment scanned on the warehouse phone is written to this same
   // register, and the person who scanned it is on a dock, not at this desk — so
   // the desk must not have to reload the page to learn a lorry arrived. Polled
@@ -8018,13 +8020,15 @@ function LREntryView({ toast }) {
 
   const [searching, setSearching] = useState(false)   // search panel open
   const [found, setFound] = useState(null)       // search results, null = not filtered
-  const shown = found ? found.rows : saved
   // the register, and the rows just read off a page — both grow without limit,
   // and both are read a screenful at a time
   // 25, matching the invoice's line-items table rather than the 50 this had:
   // the register is a wide table and the pager stays hidden below 25 rows
   // anyway, so a page of 50 meant the control appeared only past 51 entries.
-  const savedPage = usePaged(shown, 25)
+  // Search results are paged here; the unfiltered register by the server.
+  const foundPage = usePaged(found ? found.rows : [], 25)
+  const listPage = found ? foundPage : savedPage
+  const shownCount = found ? found.rows.length : savedPage.total
   const extractPage = usePaged(rows, 50)
   const openNew = () => { setForm({}); setRows([]) }
   const openEdit = async (r) => {
@@ -8090,7 +8094,9 @@ function LREntryView({ toast }) {
     }
     try {
       const upd = await api.lrUpdate(r.id, { [k]: val })
-      setSaved((list) => list.map((x) => (x.id === upd.id ? upd : x)))
+      // the register page is the server's — re-read it; a search result is ours
+      refresh()
+      if (found) setFound((f) => f && { ...f, rows: f.rows.map((x) => (x.id === upd.id ? upd : x)) })
       drop(key)
     } catch (err) { toast('Could not save: ' + (err.detail || err.message), 'err'); drop(key) }
   }
@@ -8144,7 +8150,7 @@ function LREntryView({ toast }) {
             </h4>
           </div>
         )}
-        {rows.length === 0 && saved.length === 0 && form === null && (
+        {rows.length === 0 && !savedPage.loading && savedPage.total === 0 && !found && form === null && (
           <div className="empty" style={{ marginTop: 40 }}>
             Import an LR register page to auto-extract its rows, or press <b>New entry</b> to key one in.
           </div>
@@ -8220,8 +8226,8 @@ function LREntryView({ toast }) {
             </Section>
           </>
         )}
-        {shown.length > 0 && (
-          <Section id="lr.saved" title={`${found ? 'Search results' : 'Saved LR entries'} · ${shown.length}`} summary={`${shown.length} row(s)`}>
+        {shownCount > 0 && (
+          <Section id="lr.saved" title={`${found ? 'Search results' : 'Saved LR entries'} · ${shownCount.toLocaleString('en-IN')}`} summary={`${shownCount.toLocaleString('en-IN')} row(s)`}>
             <div className="tablewrap">
               <table className="items reg">
                 <thead><tr>
@@ -8233,7 +8239,7 @@ function LREntryView({ toast }) {
                       you can DO with it sits at the end where the eye finishes */}
                   <th style={{ width: 62 }}></th>
                 </tr></thead>
-                <tbody>{savedPage.slice.map((r) => (
+                <tbody>{listPage.slice.map((r) => (
                   <tr key={r.id}>
                     <td style={{ fontSize: 11, fontWeight: 600 }}>
                       {r.mismatches && r.mismatches.length
@@ -8302,7 +8308,7 @@ function LREntryView({ toast }) {
                 ))}</tbody>
               </table>
             </div>
-            <Pager {...savedPage} noun="entry" nouns="entries" />
+            <Pager {...listPage} noun="entry" nouns="entries" />
           </Section>
         )}
         {found && found.rows.length === 0 && (
