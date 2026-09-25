@@ -230,8 +230,18 @@ def _resolve_unit_row(db, code):
     code = str(code or "").strip()
     if not code:
         return None
-    return db.query(models.ProductUnit).filter(
-        models.ProductUnit.code.ilike(code)).first()
+    # Exact matches on the indexed column — as scanned, then upper, then lower
+    # case — rather than ILIKE, which no index serves: every scan anywhere in the
+    # app read the whole piece-code table (2.4M rows, half a second) before it
+    # even tried a SKU. Stored codes are upper case bar a handful of legacy
+    # all-lower ones, and those three spellings find every one of them. ILIKE
+    # also read `_` in a code as "any character", which was never intended.
+    U = models.ProductUnit
+    for variant in dict.fromkeys((code, code.upper(), code.lower())):
+        unit = db.query(U).filter(U.code == variant).first()
+        if unit:
+            return unit
+    return None
 
 
 def _unit_label_card(u) -> str:
@@ -513,9 +523,15 @@ def resolve(db, code):
         p = db.get(models.Product, int(code))
         if p:
             return p
-    # case-insensitive sku fallback
-    return db.query(models.Product).filter(
-        models.Product.sku.ilike(code)).first()
+    # case-insensitive sku fallback — as the upper/lower spellings, on the index
+    # (SKUs are minted upper case), not an ILIKE that reads every product
+    for variant in dict.fromkeys((code.upper(), code.lower())):
+        if variant == code:
+            continue
+        p = db.query(models.Product).filter(models.Product.sku == variant).first()
+        if p:
+            return p
+    return None
 
 
 def barcode_svg(code: str) -> str:

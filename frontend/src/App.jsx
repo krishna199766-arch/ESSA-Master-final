@@ -7433,6 +7433,22 @@ function PhysicalAuditView({ toast, role }) {
     if (viewing) setViewing(fresh); else setAudit(fresh)
     return fresh
   }
+  // A scan, a typed count or a dropped row answers with the one line it touched
+  // and the new totals. Folding those in — rather than re-reading the whole sheet
+  // after every beep — is what keeps a count of thousands of rows scannable.
+  const merge = ({ line, totals: t, dropId }) => {
+    const apply = (a) => {
+      if (!a) return a
+      let lines = a.lines || []
+      if (dropId != null) lines = lines.filter((l) => l.id !== dropId)
+      if (line) {
+        const at = lines.findIndex((l) => l.id === line.id)
+        lines = at >= 0 ? lines.map((l, i) => (i === at ? line : l)) : [...lines, line]
+      }
+      return { ...a, lines, totals: t || a.totals }
+    }
+    if (viewing) setViewing(apply); else setAudit(apply)
+  }
 
   // --- the toolbar ---------------------------------------------------------
   const doSearch = async () => {
@@ -7509,7 +7525,7 @@ function PhysicalAuditView({ toast, role }) {
     setCode('')
     try {
       const r = await api.psaScan(shown.id, c)
-      await refresh()
+      merge(r)
       if (r.message) toast(r.message, 'warn')
       // A gun fires one code after another; the box has to be ready for the next
       // without anybody reaching for the mouse.
@@ -7519,13 +7535,12 @@ function PhysicalAuditView({ toast, role }) {
 
   const setCount = async (line, value) => {
     try {
-      await api.psaCount(shown.id, line.id, value === '' ? null : value)
-      await refresh()
+      merge(await api.psaCount(shown.id, line.id, value === '' ? null : value))
     } catch (e) { toast(e.detail || 'Could not record that count', 'err') }
   }
 
   const dropLine = async (line) => {
-    try { await api.psaDropLine(shown.id, line.id); await refresh() }
+    try { const r = await api.psaDropLine(shown.id, line.id); merge({ totals: r.totals, dropId: line.id }) }
     catch (e) { toast(e.detail || 'Could not remove that row', 'err') }
   }
 

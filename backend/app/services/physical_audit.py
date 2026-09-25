@@ -161,6 +161,19 @@ def candidates(db: Session, warehouse_id, filters: dict):
     dropping those rows would hide it.
     """
     filters = clean_scope(filters)
+    rows = _candidate_query(db, warehouse_id, filters).order_by(models.Product.description).all()
+
+    if filters.get("location"):
+        where = _location_map(db, warehouse_id)
+        want = str(filters["location"]).strip().lower()
+        rows = [p for p in rows if (where.get(p.id) or "").strip().lower() == want]
+    return rows
+
+
+def _candidate_query(db: Session, warehouse_id, filters: dict):
+    """The Product query `candidates` runs — every filter except location,
+    which is answered from the put-away map afterwards. Its own function so the
+    preview can COUNT it instead of loading every product it covers."""
     query = scope.products(db, db.query(models.Product), warehouse_id,
                            include_zero=True)
 
@@ -201,14 +214,63 @@ def candidates(db: Session, warehouse_id, filters: dict):
         else:
             query = query.filter((models.Product.barcode == code)
                                  | (models.Product.sku == code))
+    return query
 
-    rows = query.order_by(models.Product.description).all()
 
+def _balances(db: Session, warehouse_id, products) -> dict:
+    """{product_id: (qty, cost)} here, for many products in a few reads.
+
+    `stock_locations.qty_at` and `cost_at`, answered in bulk: qty is the
+    balance row's (0 when there is none); cost is the row's average while it
+    holds more than the tolerance, else the product's own. Asked one product at
+    a time — twice per product — opening a count of a few thousand items was
+    thousands of round trips, and a whole warehouse hundreds of thousands."""
+    SB = models.StockBalance
+    ids = [p.id for p in products]
+    rows = {}
+    for i in range(0, len(ids), 5000):
+        for b in db.query(SB.product_id, SB.qty, SB.avg_cost).filter(
+                SB.warehouse_id == warehouse_id, SB.product_id.in_(ids[i:i + 5000])):
+            rows[b.product_id] = b
+    out = {}
+    for p in products:
+        b = rows.get(p.id)
+        qty = float(b.qty or 0) if b else 0.0
+        cost = (float(b.avg_cost or 0) if b and (b.qty or 0) > stock_locations.TOLERANCE
+                else float(p.avg_cost or 0))
+        out[p.id] = (qty, cost)
+    return out
+
+
+def _line_of(db: Session, audit, product_id):
+    """This count's line for one product, or None — asked directly, not by
+    loading every line of the sheet to look through them."""
+    return (db.query(models.PhysicalAuditLine)
+              .filter(models.PhysicalAuditLine.audit_id == audit.id,
+                      models.PhysicalAuditLine.product_id == product_id)
+              .order_by(models.PhysicalAuditLine.id).first())
+
+
+def preview(db: Session, warehouse_id, filters) -> dict:
+    """How many items a filter set covers, and how many pieces the books say —
+    counted in the database. The Search button used to load every product and
+    ask each one's balance separately."""
+    filters = clean_scope(filters)
     if filters.get("location"):
-        where = _location_map(db, warehouse_id)
-        want = str(filters["location"]).strip().lower()
-        rows = [p for p in rows if (where.get(p.id) or "").strip().lower() == want]
-    return rows
+        # the put-away map is not a column the database can filter on
+        products = candidates(db, warehouse_id, filters)
+        bal = _balances(db, warehouse_id, products)
+        return {"items": len(products),
+                "qty": round(float(sum(q for q, _c in bal.values())), 3),
+                "filters": filters}
+    from sqlalchemy import func, select
+    SB = models.StockBalance
+    ids = _candidate_query(db, warehouse_id, filters).with_entities(models.Product.id).subquery()
+    items = db.query(func.count()).select_from(ids).scalar() or 0
+    qty = (db.query(func.sum(func.coalesce(SB.qty, 0)))
+             .filter(SB.warehouse_id == warehouse_id, SB.product_id.in_(select(ids.c.id)))
+             .scalar()) or 0
+    return {"items": int(items), "qty": round(float(qty), 3), "filters": filters}
 
 
 def filter_options(db: Session, warehouse_id) -> dict:
@@ -294,17 +356,26 @@ def _freeze(db: Session, audit, line):
                                               audit.warehouse_id)
 
 
-def _line_for(db: Session, audit, product, *, where=None, source="opened"):
+def _line_for(db: Session, audit, product, *, where=None, source="opened",
+              balance=None, new=False):
     """This count's line for a product, against today's books if new.
 
     The figures here are the sheet's OPENING view — what to expect on the rack.
     What the variance is measured against is pinned separately, by `_freeze`, at
     the moment somebody actually counts the row.
+
+    `balance` is (qty, cost) already read in bulk (see `_balances`); `new` says
+    the caller knows there is no line yet. Both exist for opening a count, which
+    creates thousands of lines at once and must not look each one up twice.
     """
-    line = next((l for l in audit.lines if l.product_id == product.id), None)
-    if line is not None:
-        return line
-    qty = stock_locations.qty_at(db, product.id, audit.warehouse_id)
+    if not new:
+        line = _line_of(db, audit, product.id)
+        if line is not None:
+            return line
+    if balance is None:
+        balance = (stock_locations.qty_at(db, product.id, audit.warehouse_id),
+                   stock_locations.cost_at(db, product.id, audit.warehouse_id))
+    qty, cost = balance
     line = models.PhysicalAuditLine(
         audit_id=audit.id, product_id=product.id,
         uan=product.sku, barcode=product.barcode,
@@ -315,12 +386,11 @@ def _line_for(db: Session, audit, product, *, where=None, source="opened"):
         brand=product.brand, size=product.size, design_no=product.design_no,
         color=product.color,
         system_qty=round(float(qty or 0), 3),
-        cost_price=stock_locations.cost_at(db, product.id, audit.warehouse_id),
+        cost_price=cost,
         net_price=product.sale_price if product.sale_price is not None else product.mrp,
         counted_qty=None, scans=0, source=source)
     if where is not None:
         line.note = where.get(product.id) or None
-    audit.lines.append(line)
     db.add(line)
     return line
 
@@ -359,8 +429,10 @@ def open_audit(db: Session, warehouse_id, *, by=None, note=None, filters=None):
     db.flush()
 
     where = _location_map(db, warehouse_id)
+    bal = _balances(db, warehouse_id, products)
     for product in products:
-        _line_for(db, audit, product, where=where, source="opened")
+        _line_for(db, audit, product, where=where, source="opened",
+                  balance=bal[product.id], new=True)
     db.flush()
     return audit
 
@@ -431,7 +503,7 @@ def scan(db: Session, audit, code, *, qty=1, by=None):
         raise AuditError(f"Nothing in the catalogue matches “{code}”.")
 
     message = ""
-    line = next((l for l in audit.lines if l.product_id == product.id), None)
+    line = _line_of(db, audit, product.id)
     if line is None:
         # Outside what this count was opened over. Whether that is allowed is the
         # "Direct Add/Remove" box: with it on, stock found where the filters said
@@ -442,7 +514,7 @@ def scan(db: Session, audit, code, *, qty=1, by=None):
                 f"{product.description} is not in this count — it is outside the "
                 f"filters {audit.code} was opened over. Tick Direct Add/Remove to "
                 f"add what you find anyway.")
-        line = _line_for(db, audit, product, source="scanned")
+        line = _line_for(db, audit, product, source="scanned", new=True)
         db.flush()
         message = (f"{product.description} was not in the filtered set — added, "
                    f"and flagged as found off-scope.")
@@ -464,10 +536,10 @@ def add_product(db: Session, audit, product, *, by=None):
     if not (audit.scope or {}).get("direct_edit"):
         raise AuditError("Tick Direct Add/Remove to put items on this count by "
                          "hand — it was opened over a filtered set.")
-    existing = next((l for l in audit.lines if l.product_id == product.id), None)
+    existing = _line_of(db, audit, product.id)
     if existing is not None:
         return existing
-    line = _line_for(db, audit, product, source="added")
+    line = _line_for(db, audit, product, source="added", new=True)
     db.flush()
     return line
 
@@ -507,6 +579,10 @@ def upload(db: Session, audit, rows, *, by=None):
     where = _location_map(db, audit.warehouse_id)
     applied, added, unknown, off_scope = 0, 0, [], []
 
+    # Each code resolved first, then this count's lines for all of them read in
+    # one go — looking each up by walking the sheet made a big file against a
+    # big count a quadratic job.
+    resolved = []
     for row in rows or []:
         code = str((row or {}).get("code") or "").strip()
         if not code:
@@ -523,17 +599,28 @@ def upload(db: Session, audit, rows, *, by=None):
             from . import units as unit_svc
             unit = unit_svc.resolve(db, code)
             product = unit.product if unit is not None else None
+        resolved.append((code, qty, product))
+    L = models.PhysicalAuditLine
+    pids = sorted({p.id for _c, _q, p in resolved if p is not None})
+    by_product = {}
+    for i in range(0, len(pids), 5000):
+        for l in (db.query(L).filter(L.audit_id == audit.id, L.product_id.in_(pids[i:i + 5000]))
+                    .order_by(L.id)):
+            by_product.setdefault(l.product_id, l)
+
+    for code, qty, product in resolved:
         if product is None:
             unknown.append(code)
             continue
 
-        line = next((l for l in audit.lines if l.product_id == product.id), None)
+        line = by_product.get(product.id)
         if line is None:
             if not allow_new:
                 off_scope.append(code)
                 continue
-            line = _line_for(db, audit, product, where=where, source="uploaded")
+            line = _line_for(db, audit, product, where=where, source="uploaded", new=True)
             db.flush()
+            by_product[product.id] = line
             added += 1
         _freeze(db, audit, line)
         line.counted_qty = qty
@@ -568,28 +655,56 @@ def synchronize(db: Session, audit):
     would report the rack short by exactly the delivery.
     """
     _open_or_refuse(audit)
+    from sqlalchemy import select
+    L, P = models.PhysicalAuditLine, models.Product
     refreshed = 0
-    for line in audit.lines:
-        if line.counted_qty is not None or not line.product_id:
-            continue
-        qty = round(float(stock_locations.qty_at(
-            db, line.product_id, audit.warehouse_id) or 0), 3)
+    # today's figures for every uncounted line, read in bulk (qty_at / cost_at
+    # were two queries per line)
+    uncounted = [l for l in db.query(L).filter(L.audit_id == audit.id,
+                                               L.counted_qty.is_(None),
+                                               L.product_id.isnot(None))]
+    pids = sorted({l.product_id for l in uncounted})
+    costs = {}
+    for i in range(0, len(pids), 5000):
+        costs.update(dict(db.query(P.id, P.avg_cost).filter(P.id.in_(pids[i:i + 5000]))))
+    bal = _balances(db, audit.warehouse_id,
+                    [_Priced(pid, costs.get(pid)) for pid in pids])
+    for line in uncounted:
+        qty, cost = bal.get(line.product_id, (0.0, float(costs.get(line.product_id) or 0)))
+        qty = round(float(qty or 0), 3)
         if qty != round(float(line.system_qty or 0), 3):
             line.system_qty = qty
             refreshed += 1
-        line.cost_price = stock_locations.cost_at(db, line.product_id,
-                                                  audit.warehouse_id)
+        line.cost_price = cost
 
-    have = {l.product_id for l in audit.lines}
-    where = _location_map(db, audit.warehouse_id)
+    # items inside the filters that are not on the sheet yet — asked of the
+    # database, rather than loading every product the filters cover to compare
+    scope_ = audit.scope or {}
+    on_sheet = select(L.product_id).where(L.audit_id == audit.id, L.product_id.isnot(None))
+    if scope_.get("location"):
+        have = {pid for (pid,) in db.execute(on_sheet)}
+        fresh = [p for p in candidates(db, audit.warehouse_id, scope_) if p.id not in have]
+    else:
+        fresh = (_candidate_query(db, audit.warehouse_id, clean_scope(scope_))
+                 .filter(~P.id.in_(on_sheet)).order_by(P.description).all())
     added = 0
-    for product in candidates(db, audit.warehouse_id, audit.scope or {}):
-        if product.id in have:
-            continue
-        _line_for(db, audit, product, where=where, source="opened")
-        added += 1
+    if fresh:
+        where = _location_map(db, audit.warehouse_id)
+        new_bal = _balances(db, audit.warehouse_id, fresh)
+        for product in fresh:
+            _line_for(db, audit, product, where=where, source="opened",
+                      balance=new_bal[product.id], new=True)
+            added += 1
     db.flush()
     return {"refreshed": refreshed, "added": added}
+
+
+class _Priced:
+    """(id, avg_cost) in the shape `_balances` reads a product in."""
+    __slots__ = ("id", "avg_cost")
+
+    def __init__(self, id, avg_cost):
+        self.id, self.avg_cost = id, avg_cost
 
 
 # ---------------------------------------------------------------------------
@@ -605,8 +720,9 @@ def set_status(db: Session, audit, status, *, by=None):
             raise AuditError(f"{audit.code} is {audit.status} and cannot be changed.")
         raise AuditError(f"{audit.code} is {audit.status} — it can only become "
                          f"{' or '.join(sorted(allowed))}.")
-    if status == "completed" and not [l for l in audit.lines
-                                      if l.counted_qty is not None]:
+    L = models.PhysicalAuditLine
+    if status == "completed" and not db.query(L.id).filter(
+            L.audit_id == audit.id, L.counted_qty.isnot(None)).first():
         raise AuditError("Nothing has been counted yet, so there is nothing to "
                          "complete. Cancel it instead if the count is not going "
                          "ahead.")
@@ -715,22 +831,38 @@ def totals(db: Session, audit) -> dict:
                  not (the screen's "n + m") — between them, every line looked at
       missing    the net shortfall: pieces the books expect that nobody found
     """
-    lines = audit.lines
-    counted = [l for l in lines if l.counted_qty is not None]
-    matched = sum(1 for l in counted if l.difference == 0)
-    short = sum(-l.difference for l in counted if l.difference < 0)
-    excess = sum(l.difference for l in counted if l.difference > 0)
+    # Counted in the database. Built from `audit.lines`, every scan and every
+    # typed count — each of which answers with these totals — read the whole
+    # sheet back, which on a count of a warehouse is hundreds of thousands of
+    # rows per beep. Same arithmetic: a line's difference is counted − books
+    # rounded to 3 places (PhysicalAuditLine.difference), and "matched" is a
+    # difference that rounds to nothing.
+    from sqlalchemy import Numeric, case, cast, func
+    L = models.PhysicalAuditLine
+    diff = func.round(cast(L.counted_qty - func.coalesce(L.system_qty, 0), Numeric), 3)
+    counted = L.counted_qty.isnot(None)
+    n, n_counted, available, uploaded, matched, short, excess, off = db.query(
+        func.count(L.id),
+        func.sum(case((counted, 1), else_=0)),
+        func.sum(func.coalesce(L.system_qty, 0)),
+        func.sum(case((counted, L.counted_qty), else_=0)),
+        func.sum(case((counted & (diff == 0), 1), else_=0)),
+        func.sum(case((counted & (diff < 0), -diff), else_=0)),
+        func.sum(case((counted & (diff > 0), diff), else_=0)),
+        func.sum(case((L.source.in_(("scanned", "added")), 1), else_=0)),
+    ).filter(L.audit_id == audit.id).one()
+    n, n_counted, matched = int(n or 0), int(n_counted or 0), int(matched or 0)
     return {
-        "lines": len(lines),
-        "counted_lines": len(counted),
-        "pending_lines": len(lines) - len(counted),
-        "available": round(sum(float(l.system_qty or 0) for l in lines), 3),
-        "uploaded": round(sum(float(l.counted_qty or 0) for l in counted), 3),
+        "lines": n,
+        "counted_lines": n_counted,
+        "pending_lines": n - n_counted,
+        "available": round(float(available or 0), 3),
+        "uploaded": round(float(uploaded or 0), 3),
         "valid": matched,
-        "variance_lines": len(counted) - matched,
-        "missing": round(short, 3),
-        "excess": round(excess, 3),
-        "off_scope": sum(1 for l in lines if l.source in ("scanned", "added")),
+        "variance_lines": n_counted - matched,
+        "missing": round(float(short or 0), 3),
+        "excess": round(float(excess or 0), 3),
+        "off_scope": int(off or 0),
     }
 
 

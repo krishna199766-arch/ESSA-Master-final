@@ -100,8 +100,13 @@ def _audit_or_404(db, audit_id) -> models.PhysicalAudit:
     return row
 
 
-def _line_or_404(audit, line_id) -> models.PhysicalAuditLine:
-    line = next((l for l in audit.lines if l.id == line_id), None)
+def _line_or_404(audit, line_id, db=None) -> models.PhysicalAuditLine:
+    # asked directly — walking `audit.lines` loaded the whole sheet to find one row
+    from sqlalchemy.orm import object_session
+    db = db or object_session(audit)
+    line = (db.query(models.PhysicalAuditLine)
+              .filter(models.PhysicalAuditLine.id == line_id,
+                      models.PhysicalAuditLine.audit_id == audit.id).first())
     if line is None:
         raise HTTPException(404, "that row is not on this count")
     return line
@@ -138,11 +143,8 @@ def preview(body: PreviewIn, db: Session = Depends(get_db),
     first. The Search button on the screen is this.
     """
     wid = _counting_warehouse(db, wid)
-    rows = audit.candidates(db, wid, body.filters or {})
-    from ..services import stock_locations
-    qty = sum(stock_locations.qty_at(db, p.id, wid) or 0 for p in rows)
-    return {"items": len(rows), "qty": round(float(qty), 3),
-            "filters": audit.clean_scope(body.filters or {})}
+    # counted in the database — see services/physical_audit.preview
+    return audit.preview(db, wid, body.filters or {})
 
 
 # --- the count itself ------------------------------------------------------
