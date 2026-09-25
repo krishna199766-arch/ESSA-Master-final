@@ -7982,18 +7982,35 @@ function PhysicalAuditView({ toast, role }) {
 // invoice number, supplier, date and amount. This searches all of them, a page
 // at a time, and the LR register beside them (a consignment names its invoice
 // too). Opening one goes to its GRN.
+const NO_INVOICE_FILTERS = { date_from: '', date_to: '', invoice_no: '', supplier: '', grn_no: '' }
+
 function InvoiceFinder({ onOpenGrn }) {
   const [q, setQ] = useState('')
   const qd = useDebounced(q)
+  // one filter per field, each narrowing further; typed ones wait for a pause
+  const [f, setF] = useState(NO_INVOICE_FILTERS)
+  const fd = useDebounced(f)
+  const setField = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
+  const anyFilter = Object.values(f).some((v) => v.trim()) || q.trim()
   const grnPage = useServerPaged(({ limit, offset }) =>
-    api.purchasesPage({ limit, offset, q: qd, status: 'all' }), `inv|${qd}`, 25)
+    api.purchasesPage({ limit, offset, q: qd, status: 'all', ...fd }),
+  `inv|${qd}|${JSON.stringify(fd)}`, 25)
   const [lr, setLr] = useState(null)             // LR entries naming it, when searching
+  const lrText = (fd.invoice_no || qd).trim()
   useEffect(() => {
-    if (!qd.trim()) { setLr(null); return }
+    if (!lrText && !fd.supplier.trim()) { setLr(null); return }
     let live = true
-    api.lrSearch({ q: qd.trim(), limit: 50 }).then((r) => { if (live) setLr(r) }).catch(() => {})
+    api.lrSearch({ q: lrText, supplier: fd.supplier.trim(), limit: 50 })
+      .then((r) => { if (live) setLr(r) }).catch(() => {})
     return () => { live = false }
-  }, [qd])
+  }, [lrText, fd.supplier])
+  const described = [
+    qd.trim() && `matching “${qd.trim()}”`,
+    fd.invoice_no.trim() && `invoice no “${fd.invoice_no.trim()}”`,
+    fd.supplier.trim() && `supplier “${fd.supplier.trim()}”`,
+    fd.grn_no.trim() && `GRN “${fd.grn_no.trim()}”`,
+    (fd.date_from || fd.date_to) && `dated ${fd.date_from ? fmtDate(fd.date_from) : 'the start'} to ${fd.date_to ? fmtDate(fd.date_to) : 'today'}`,
+  ].filter(Boolean).join(', ')
   return (
     <div className="editor" style={{ flex: 1, overflow: 'auto' }}>
       <h2 style={{ marginTop: 0 }}>Find a saved invoice</h2>
@@ -8002,11 +8019,25 @@ function InvoiceFinder({ onOpenGrn }) {
         Search by invoice number, supplier or GRN number; open one to see its lines.
       </div>
       <SearchBox value={q} onChange={setQ} style={{ maxWidth: 440 }}
-        placeholder="Invoice number, supplier or GRN no…" />
+        placeholder="Quick search — invoice number, supplier or GRN no…" />
+      <div className="invfilters" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', margin: '12px 0 4px' }}>
+        <label className="small" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>Invoice date from
+          <input type="date" value={f.date_from} onChange={setField('date_from')} max={f.date_to || undefined} /></label>
+        <label className="small" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>to
+          <input type="date" value={f.date_to} onChange={setField('date_to')} min={f.date_from || undefined} /></label>
+        <label className="small" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>Invoice number
+          <input value={f.invoice_no} onChange={setField('invoice_no')} placeholder="e.g. 40610" style={{ width: 130 }} /></label>
+        <label className="small" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>Supplier name
+          <input value={f.supplier} onChange={setField('supplier')} placeholder="e.g. Ramraj" style={{ width: 200 }} /></label>
+        <label className="small" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>GRN number
+          <input value={f.grn_no} onChange={setField('grn_no')} placeholder="e.g. GRN15180" style={{ width: 130 }} /></label>
+        <button className="btn" disabled={!anyFilter} onClick={() => { setF(NO_INVOICE_FILTERS); setQ('') }}
+          title="Clear the search and every filter">Clear filters</button>
+      </div>
       <div className="small" style={{ margin: '10px 0' }}>
         {grnPage.loading ? 'Searching…'
           : `${grnPage.total.toLocaleString('en-IN')} invoice${grnPage.total === 1 ? '' : 's'}`
-            + (qd.trim() ? ` matching “${qd.trim()}”` : ' saved, newest first')}
+            + (described ? ` ${described}` : ' saved') + ', newest first'}
       </div>
       {!grnPage.loading && grnPage.total === 0 && (
         <div className="empty" style={{ marginTop: 20 }}>No saved invoice matches. Try part of the number, or the supplier's name.</div>

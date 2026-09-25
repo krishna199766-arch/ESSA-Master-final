@@ -222,8 +222,10 @@ export const api = {
   // purchases / GRN
   listPurchases: () => fetch('/api/purchases').then(J),
   // one page — { rows, total, counts }. status: draft | posted | short | all
-  purchasesPage: ({ limit, offset, q, status }) =>
-    fetch('/api/purchases' + qs({ limit, offset, q, status })).then(J),
+  // filters: invoice_no, supplier, grn_no, date_from, date_to (invoice date, inclusive)
+  purchasesPage: ({ limit, offset, q, status, invoice_no, supplier, grn_no, date_from, date_to }) =>
+    fetch('/api/purchases' + qs({ limit, offset, q, status, invoice_no, supplier, grn_no,
+      date_from, date_to })).then(J),
   // the dashboard's GRN figures: { drafts, recent, posted, short_lines, short_value }
   purchasesSummary: () => fetch('/api/purchases/summary').then(J),
   getPurchase: (id) => fetch(`/api/purchases/${id}`).then(J),

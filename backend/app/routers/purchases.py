@@ -10,6 +10,7 @@ from ..services import barcode_svc
 from ..services import shortages as short_svc
 from ..services import size_split
 from ..services import scope
+from ..services import dates as date_svc
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
 
@@ -238,7 +239,9 @@ def _with_names(q):
 
 @router.get("")
 def list_purchases(limit: Optional[int] = None, offset: int = 0, q: str = "",
-                   status: str = "all", db: Session = Depends(get_db),
+                   status: str = "all", invoice_no: str = "", supplier: str = "",
+                   grn_no: str = "", date_from: str = "", date_to: str = "",
+                   db: Session = Depends(get_db),
                    wid: Optional[int] = Depends(scope.current)):
     """The GRN list for the warehouse this call is made inside.
 
@@ -252,6 +255,11 @@ def list_purchases(limit: Optional[int] = None, offset: int = 0, q: str = "",
     `total` is how many match, and `counts` are the filter chips' numbers for
     the whole warehouse. A store with years of receipts sent the full list as
     17 MB on every open of the screen; a page is fifty rows.
+
+    The paged form also takes one filter per field, each narrowing further:
+    `invoice_no`, `supplier` and `grn_no` (part of the value, any case) and
+    `date_from` / `date_to` on the invoice date, inclusive. Invoice dates are
+    stored ISO, so the range is a string comparison that is chronological.
     """
     P = models.Purchase
     base = scope.purchases(db.query(P), wid)
@@ -275,6 +283,18 @@ def list_purchases(limit: Optional[int] = None, offset: int = 0, q: str = "",
         named = select(models.Supplier.id).where(models.Supplier.name.ilike(like))
         filtered = filtered.filter(P.supplier_id.in_(named) | P.invoice_number.ilike(like)
                                    | P.grn_no.ilike(like) | P.status.ilike(like))
+    if invoice_no.strip():
+        filtered = filtered.filter(P.invoice_number.ilike(f"%{invoice_no.strip()}%"))
+    if grn_no.strip():
+        filtered = filtered.filter(P.grn_no.ilike(f"%{grn_no.strip()}%"))
+    if supplier.strip():
+        filtered = filtered.filter(P.supplier_id.in_(
+            select(models.Supplier.id).where(models.Supplier.name.ilike(f"%{supplier.strip()}%"))))
+    lo, hi = date_svc.to_iso(date_from), date_svc.to_iso(date_to)
+    if lo:
+        filtered = filtered.filter(P.invoice_date >= lo)
+    if hi:
+        filtered = filtered.filter(P.invoice_date <= hi)
     total = filtered.count()
     page = _with_names(filtered).order_by(P.id.desc()).offset(max(0, offset))
     if limit > 0:
