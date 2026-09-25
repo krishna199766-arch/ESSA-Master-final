@@ -31,6 +31,9 @@
   </div>
   <div class="col-md-2"><button class="btn btn-outline-primary w-100">Filter</button></div>
 </form>
+{% if capped %}
+<div class="text-muted small mb-2">Showing the first {{ products|length }} of {{ '{:,}'.format(total) }} products{% if q %} matching “{{ q }}”{% endif %} — search or pick a category to find the rest.</div>
+{% endif %}
 
 <div class="card">
   <div class="table-responsive">

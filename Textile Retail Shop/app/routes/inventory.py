@@ -89,6 +89,11 @@ def _floors():
             .order_by(Floor.location_id, Floor.sort_order, Floor.name).all())
 
 
+#: How many products the list draws with no search/filter, and with one.
+PRODUCTS_LISTED = 200
+PRODUCTS_SEARCHED = 500
+
+
 @inventory_bp.route("/")
 @login_required
 def list_products():
@@ -102,9 +107,16 @@ def list_products():
         )
     if cat_id:
         query = query.filter_by(category_id=cat_id)
-    products = query.order_by(Product.name).all()
+    # Capped. Every active product with a QR drawn for each was the whole
+    # catalogue — 400k on a full store — rendered as one page: it never came
+    # back, and held a server thread until it gave up. The count is shown with
+    # the cap; the search and the category filter reach everything.
+    cap = PRODUCTS_SEARCHED if (q or cat_id) else PRODUCTS_LISTED
+    total = query.count()
+    products = query.order_by(Product.name, Product.id).limit(cap).all()
     return render_template("inventory/list.html", products=products,
-                           category_groups=grouped_categories(), q=q, cat_id=cat_id)
+                           category_groups=grouped_categories(), q=q, cat_id=cat_id,
+                           total=total, capped=total > len(products))
 
 
 @inventory_bp.route("/api/barcode-lookup")

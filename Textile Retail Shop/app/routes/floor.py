@@ -77,9 +77,18 @@ def customer_lookup():
     # 2) digits-only match — normalizes "+91 99000 11111" vs "9900011111"
     digits = "".join(ch for ch in q if ch.isdigit())
     if not c and len(digits) >= 5:
-        for cand in Customer.query.filter(Customer.phone.isnot(None)).all():
-            if "".join(ch for ch in (cand.phone or "") if ch.isdigit()).endswith(digits):
-                c = cand; break
+        if db.engine.dialect.name == "postgresql":
+            # The same test — the stored number's digits ending in these — asked
+            # of the database. In Python it read every customer with a phone on
+            # every lookup: six figures of rows each time a cashier typed a number.
+            from sqlalchemy import func
+            c = (Customer.query
+                 .filter(func.regexp_replace(Customer.phone, r"\D", "", "g").like("%" + digits))
+                 .order_by(Customer.id).first())
+        else:
+            for cand in Customer.query.filter(Customer.phone.isnot(None)).all():
+                if "".join(ch for ch in (cand.phone or "") if ch.isdigit()).endswith(digits):
+                    c = cand; break
     # 3) invoice number
     if not c:
         inv = Invoice.query.filter_by(invoice_number=q).first()
@@ -173,8 +182,8 @@ def session_view(code):
     s = SaleSession.query.filter_by(code=code).first_or_404()
     if s.salesperson_id != current_user.id and not current_user.is_manager:
         abort(403)
-    customers = Customer.query.order_by(Customer.name).all()
-    return render_template("floor/salesperson.html", s=s, customers=customers)
+    # the page picks a customer through the lookup API; it never read a full list
+    return render_template("floor/salesperson.html", s=s, customers=[])
 
 
 @floor_bp.route("/s/<code>/state")

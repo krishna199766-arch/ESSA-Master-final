@@ -469,7 +469,15 @@ def list_deliveries():
         query = query.outerjoin(Customer, Delivery.customer_id == Customer.id) \
             .filter(or_(Delivery.number.ilike(like), Customer.name.ilike(like),
                         Customer.phone.ilike(like)))
-    notes = query.order_by(Delivery.id.desc()).limit(300).all()
+    # Everything each row prints, read with the rows: its customer, its staff,
+    # its bills' numbers and its lines (with the bill line that prices them).
+    # Row by row that was several queries per delivery — 14 s for 300 on a store
+    # with 700k handovers.
+    from sqlalchemy.orm import joinedload, selectinload
+    notes = (query.options(joinedload(Delivery.customer), joinedload(Delivery.staff),
+                           selectinload(Delivery.bills).joinedload(DeliveryBill.invoice),
+                           selectinload(Delivery.lines).joinedload(DeliveryLine.invoice_item))
+             .order_by(Delivery.id.desc()).limit(300).all())
     return render_template("delivery/list.html", notes=notes, q=q)
 
 

@@ -172,11 +172,13 @@ def counter():
     listing, not a capability — and it removed a query that loaded the entire
     catalogue on every page load.
     """
-    customers = Customer.query.order_by(Customer.name).all()
+    # No customer list: the counter finds a customer by phone, card or bill as it
+    # is typed (floor.customer_lookup). Loading every customer here — six figures
+    # on a full store — went into a page that never read it, on every open.
     staff = User.query.filter(User.active.is_(True)).order_by(User.full_name).all()
     company, location, storey, till = _chosen()
     return render_template("pos/counter.html",
-                           customers=customers, staff=staff,
+                           customers=[], staff=staff,
                            places=places.picker_options(),
                            chosen_company=company, chosen_location=location,
                            chosen_floor=storey, chosen_counter=till,
