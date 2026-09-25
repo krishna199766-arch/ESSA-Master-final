@@ -296,6 +296,20 @@ def ask():
     return jsonify(nlq.ask(data.get("q", "")))
 
 
+@reports_bp.route("/retail-catalogue")
+@login_required
+@role_required("admin", "manager")
+def retail_catalogue():
+    """The Sales / Retail Reports menu as data — so the warehouse's Central
+    Reports screen can list the same registers, in the same groups, and open
+    each one here (`/r/<key>`) rather than keeping a copy of the list."""
+    return jsonify([
+        {"key": g["key"], "label": g["label"],
+         "reports": [{"key": r["key"], "label": r["label"],
+                      "unavailable": bool(r["unavailable"])} for r in g["reports"]]}
+        for g in retail_reports.catalogue()])
+
+
 @reports_bp.route("/catalogue")
 @login_required
 @role_required("admin", "manager")

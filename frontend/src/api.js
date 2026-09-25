@@ -868,6 +868,12 @@ export const api = {
   // the server drops anything a given report doesn't take, so both calls can
   // pass the same bag without a per-report branch.
   reportCatalogue: () => fetch('/api/reports').then(J),
+  // The Store's own Sales / Retail Reports menu. null = the Store is not signed
+  // in (the shop answers with its login page); [] = the POS is not mounted here.
+  storeReportCatalogue: () => fetch('/pos/reports/retail-catalogue').then((r) => {
+    if (r.status === 404) return []
+    return r.ok && (r.headers.get('content-type') || '').includes('json') ? r.json() : null
+  }),
   reportGroups: () => fetch('/api/reports/groups').then(J),
   runReport: (key, params) => fetch(`/api/reports/${key}${qs(params)}`).then(J),
   reportCsvUrl: (key, params) => `/api/reports/${key}/csv${qs(params)}`,

@@ -5356,8 +5356,13 @@ function Reports() {
   const [asked, setAsked] = useState(null)      // the interpretation, while it stands
   const [asking, setAsking] = useState(false)
   const [askMeta, setAskMeta] = useState(null)  // engine + example questions
+  // The Store's Sales / Retail Reports, listed under the warehouse's own and
+  // opened in the shop's report page — undefined while asking, null when the
+  // Store is not signed in, [] when there is no Store here at all.
+  const [store, setStore] = useState(undefined)
   useEffect(() => {
     api.reportGroups().then(setGroups).catch(() => {})
+    api.storeReportCatalogue().then(setStore).catch(() => setStore([]))
     api.reportCatalogue().then((c) => { setCat(c); if (c[0]) pick(c[0].key) })
     api.reportAskExamples().then(setAskMeta).catch(() => {})
   }, [])
@@ -5375,6 +5380,11 @@ function Reports() {
   // describes what is on screen — so the reading goes rather than sitting there
   // captioning a table it no longer refers to.
   const pick = (k) => { setKey(k); setRep(null); setQ(''); setAsked(null); load(k, filters) }
+  // A Store report: shown in the shop's own page, which has its own period,
+  // branch and till filters and its own export. '' is the Store's catalogue.
+  const pickStore = (k) => { setKey('store:' + k); setRep(null); setQ(''); setAsked(null) }
+  const storeKey = key?.startsWith('store:') ? key.slice(6) : null
+  const storeCount = (store || []).reduce((n, g) => n + g.reports.length, 0)
   const setFilter = (p, v) => {
     const next = { ...filters, [p]: v }
     setFilters(next)
@@ -5440,7 +5450,7 @@ function Reports() {
   return (
     <div className="body">
       <Sidebar id="reports" label="Reports">
-        <div className="head"><h3>Reports · {cat.length}</h3></div>
+        <div className="head"><h3>Reports · {cat.length + storeCount}</h3></div>
         <div className="list" style={{ padding: '6px 0' }}>
           {order.filter((g) => grouped[g.key]?.length).map((g) => (
             <div key={g.key}>
@@ -5458,9 +5468,45 @@ function Reports() {
               ))}
             </div>
           ))}
+          {store !== undefined && !(Array.isArray(store) && store.length === 0) && (
+            <div>
+              <div style={{ padding: '16px 14px 4px', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', borderTop: '1px solid var(--line)', marginTop: 8 }}>
+                Sales / Retail Reports <span style={{ opacity: 0.6, fontWeight: 400 }}>· Store</span>
+              </div>
+              <div className={'doc-row' + (storeKey === '' ? ' sel' : '')} style={{ padding: '8px 14px' }}
+                onClick={() => pickStore('')}>
+                <div className="t" style={{ fontWeight: storeKey === '' ? 700 : 400 }}>
+                  {store ? 'Report catalogue & sales overview' : 'Open Store reports'}</div>
+                {!store && <div className="small" style={{ color: 'var(--muted)' }}>
+                  Sign in to the Store to list its reports here</div>}
+              </div>
+              {(store || []).map((g) => (
+                <div key={g.key}>
+                  <div style={{ padding: '10px 14px 4px', fontSize: 11, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '.5px' }}>
+                    Store · {g.label} <span style={{ opacity: 0.6 }}>({g.reports.length})</span>
+                  </div>
+                  {g.reports.map((r) => (
+                    <div key={r.key} className={'doc-row' + (storeKey === r.key ? ' sel' : '')}
+                      style={{ padding: '8px 14px' }} onClick={() => pickStore(r.key)}
+                      title={r.unavailable ? 'Listed for completeness — the Store has no record for this' : undefined}>
+                      <div className="t" style={{ fontWeight: storeKey === r.key ? 700 : 400, opacity: r.unavailable ? 0.55 : 1 }}>{r.label}</div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Sidebar>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {storeKey !== null ? (
+          <div className="posframe">
+            {/* `?wh=` blank clears any one-warehouse scope the Store frame left in
+                the shop's session: from Central, every store's figures. */}
+            <iframe key={storeKey} src={'/pos/reports/' + (storeKey ? 'r/' + storeKey : '') + '?wh='}
+              title="Store — Sales / Retail Reports" />
+          </div>
+        ) : <>
         <AskBar value={ask} onChange={setAsk} onAsk={runAsk} busy={asking}
           engine={askMeta?.engine} />
         {asked && <AskReading read={asked} onDismiss={dismissReading} />}
@@ -5553,6 +5599,7 @@ function Reports() {
             <span className="small">Pick one from the list on the left.</span>
           </div>
         ) : <div className="empty">Loading report…</div>}
+        </>}
       </div>
     </div>
   )
