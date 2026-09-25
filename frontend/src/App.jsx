@@ -7973,6 +7973,91 @@ function PhysicalAuditView({ toast, role }) {
 }
 
 
+// Find a saved invoice — by its number, its supplier or its GRN number.
+//
+// The Documents list on the left holds only what was uploaded or keyed in here.
+// Invoices that came in any other way — every receipt migrated from the old
+// system — were never documents, so they are not on that list, and the screen
+// read as though they had been lost. They are the GRNs: every one carries its
+// invoice number, supplier, date and amount. This searches all of them, a page
+// at a time, and the LR register beside them (a consignment names its invoice
+// too). Opening one goes to its GRN.
+function InvoiceFinder({ onOpenGrn }) {
+  const [q, setQ] = useState('')
+  const qd = useDebounced(q)
+  const grnPage = useServerPaged(({ limit, offset }) =>
+    api.purchasesPage({ limit, offset, q: qd, status: 'all' }), `inv|${qd}`, 25)
+  const [lr, setLr] = useState(null)             // LR entries naming it, when searching
+  useEffect(() => {
+    if (!qd.trim()) { setLr(null); return }
+    let live = true
+    api.lrSearch({ q: qd.trim(), limit: 50 }).then((r) => { if (live) setLr(r) }).catch(() => {})
+    return () => { live = false }
+  }, [qd])
+  return (
+    <div className="editor" style={{ flex: 1, overflow: 'auto' }}>
+      <h2 style={{ marginTop: 0 }}>Find a saved invoice</h2>
+      <div className="small" style={{ color: 'var(--muted)', margin: '-6px 0 12px' }}>
+        Every invoice booked in as a GRN — including those brought over from the old system.
+        Search by invoice number, supplier or GRN number; open one to see its lines.
+      </div>
+      <SearchBox value={q} onChange={setQ} style={{ maxWidth: 440 }}
+        placeholder="Invoice number, supplier or GRN no…" />
+      <div className="small" style={{ margin: '10px 0' }}>
+        {grnPage.loading ? 'Searching…'
+          : `${grnPage.total.toLocaleString('en-IN')} invoice${grnPage.total === 1 ? '' : 's'}`
+            + (qd.trim() ? ` matching “${qd.trim()}”` : ' saved, newest first')}
+      </div>
+      {!grnPage.loading && grnPage.total === 0 && (
+        <div className="empty" style={{ marginTop: 20 }}>No saved invoice matches. Try part of the number, or the supplier's name.</div>
+      )}
+      {grnPage.rows.length > 0 && (
+        <div className="tablewrap">
+          <table className="items">
+            <thead><tr><th>Invoice no</th><th>Invoice date</th><th>Supplier</th><th>GRN</th>
+              <th>Status</th><th style={{ textAlign: 'right' }}>Amount</th><th></th></tr></thead>
+            <tbody>{grnPage.rows.map((p) => (
+              <tr key={p.id} className="doc-row" style={{ cursor: 'pointer' }} onClick={() => onOpenGrn(p.id)}
+                title="Open this invoice's GRN">
+                <td className="mono">{p.invoice_number || '—'}</td>
+                <td>{fmtDate(p.invoice_date)}</td>
+                <td>{p.supplier_name || '—'}</td>
+                <td className="mono">{p.grn_no || '#' + p.id}</td>
+                <td><span className={'badge ' + (p.status === 'posted' ? 'confirmed' : 'uploaded')}>{p.status}</span></td>
+                <td style={{ textAlign: 'right' }}>₹ {money(p.grand_total)}</td>
+                <td><button className="btn" style={{ padding: '2px 10px' }}>Open →</button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+      <Pager {...grnPage} noun="invoice" />
+      {lr && lr.count > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <h4 style={{ margin: '0 0 6px' }}>In the LR register · {lr.count.toLocaleString('en-IN')}
+            {lr.shown < lr.count ? ` (first ${lr.shown})` : ''}</h4>
+          <div className="small" style={{ color: 'var(--muted)', marginBottom: 8 }}>
+            Consignments whose LR, invoice number or supplier matches — open LR Entry to work with them.</div>
+          <div className="tablewrap">
+            <table className="items">
+              <thead><tr><th>Received</th><th>LR entry</th><th>LR no</th><th>Invoice no</th>
+                <th>Supplier</th><th>Transport</th><th style={{ textAlign: 'right' }}>Pieces</th></tr></thead>
+              <tbody>{lr.rows.map((e) => (
+                <tr key={e.id}>
+                  <td>{fmtDate(e.recv_date)}</td><td className="mono">{e.lr_entry_no || '—'}</td>
+                  <td className="mono">{e.lr_no || '—'}</td><td className="mono">{e.inv_no || '—'}</td>
+                  <td>{e.supplier_name || '—'}</td><td>{e.transport || '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{e.qty ?? '—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function LREntryView({ toast }) {
   const [rows, setRows] = useState([])
   const [docId, setDocId] = useState(null)
@@ -17138,6 +17223,10 @@ export default function App() {
         <div className="body">
           <Sidebar id="documents" label="Documents">
             <div className="head"><h3>Documents · {docs.length}</h3>
+              {/* Back to the saved-invoice search — every GRN invoice, not only
+                  the documents listed here. */}
+              <button className="btn" style={{ padding: '3px 9px', fontSize: 11 }}
+                onClick={() => setSel(null)} title="Search every saved invoice by number, supplier or GRN">🔍 Find invoice</button>
               {/* Emptying every transaction table is irreversible and global,
                   so it is a super admin's button even though this screen is
                   the floor's. The server refuses it for anyone else too. */}
@@ -17180,7 +17269,9 @@ export default function App() {
             </div>
             <Pager {...docPage} noun="document" />
           </Sidebar>
-          <Review docId={sel} onSaved={refresh} onCreateGrn={gotoPurchase} toast={toast} />
+          {/* nothing picked: the saved-invoice search, not an empty pane */}
+          {sel ? <Review docId={sel} onSaved={refresh} onCreateGrn={gotoPurchase} toast={toast} />
+            : <InvoiceFinder onOpenGrn={gotoPurchase} />}
         </div>
       ) : k === 'purchases' ? (
         <Purchases selId={selPurchase} setSelId={setSelPurchase} toast={toast} />
