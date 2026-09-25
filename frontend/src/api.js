@@ -718,6 +718,7 @@ export const api = {
   //  reason was given. `PJ` is that: J, plus the detail.
   // ------------------------------------------------------------------------
   psaOptions: () => fetch('/api/physical-audit/options').then(J),
+  psaSearchOption: (key, q) => fetch(`/api/physical-audit/options/${key}?q=${encodeURIComponent(q)}`).then(J),
   psaPreview: (filters) => PJ('/api/physical-audit/preview', { filters }),
   psaCurrent: () => fetch('/api/physical-audit/current').then(J),
   psaList: () => fetch('/api/physical-audit').then(J),

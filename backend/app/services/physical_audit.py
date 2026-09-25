@@ -93,6 +93,8 @@ PRODUCT_FILTERS = {
 #: afterwards to know what the variance means.
 OTHER_FILTERS = ("company", "location", "supplier", "barcode", "barcode_type",
                  "remove_sales", "direct_edit")
+# Filters with too many values to list; the screen searches them instead.
+SEARCHED_FILTERS = ("design",)
 
 
 class AuditError(Exception):
@@ -281,18 +283,25 @@ def filter_options(db: Session, warehouse_id) -> dict:
     on these shelves, and a list carrying every brand the company has ever bought
     makes them scroll past choices that would return nothing.
     """
-    # Distinct values asked of the database, column by column. Loading every
-    # product this warehouse has ever held as a full object to collect them was
-    # the whole catalogue on a big store — minutes, for a filter panel.
-    products = scope.products(db, db.query(models.Product), warehouse_id,
-                              include_zero=True)
-    out = {}
-    for key, column in PRODUCT_FILTERS.items():
-        col = getattr(models.Product, column)
-        out[key] = sorted({(v or "").strip() for (v,) in
-                           products.with_entities(col).distinct()} - {""})
-    supplier_ids = {sid for (sid,) in products.with_entities(
-        models.Product.primary_supplier_id).distinct() if sid}
+    # Distinct values asked of the database — on Postgres in ONE pass over this
+    # warehouse's products (array_agg per column), elsewhere column by column.
+    # Design is left out: it runs to a hundred thousand values on a full store,
+    # which no dropdown can hold, so the screen searches it (`search_option`).
+    from sqlalchemy import func
+    P = models.Product
+    products = scope.products(db, db.query(P), warehouse_id, include_zero=True)
+    keys = [k for k in PRODUCT_FILTERS if k not in SEARCHED_FILTERS]
+    cols = [getattr(P, PRODUCT_FILTERS[k]) for k in keys] + [P.primary_supplier_id]
+    if db.bind.dialect.name == "postgresql":
+        found = products.with_entities(
+            *[func.array_agg(func.distinct(c)) for c in cols]).one()
+    else:
+        found = [[v for (v,) in products.with_entities(c).distinct()] for c in cols]
+    out = {key: sorted({str(v).strip() for v in (vals or []) if v is not None} - {""})
+           for key, vals in zip(keys, found)}
+    for key in SEARCHED_FILTERS:
+        out[key] = None                     # "type to search", not "none recorded"
+    supplier_ids = {sid for sid in (found[-1] or []) if sid}
     out["supplier"] = [
         {"id": s.id, "name": s.name} for s in db.query(models.Supplier)
         .filter(models.Supplier.id.in_(supplier_ids))
@@ -300,9 +309,29 @@ def filter_options(db: Session, warehouse_id) -> dict:
     out["company"] = [{"id": b.id, "name": b.name} for b in
                       db.query(models.Business).order_by(models.Business.name).all()]
     where = _location_map(db, warehouse_id)
-    held = {pid for (pid,) in products.with_entities(models.Product.id)}
-    out["location"] = sorted({v for k, v in where.items() if k in held and v})
+    if where:
+        # Only worth asking which products are held here when some have a rack.
+        held = {pid for (pid,) in products.with_entities(P.id)}
+        out["location"] = sorted({v for k, v in where.items() if k in held and v})
+    else:
+        out["location"] = []
     return out
+
+
+def search_option(db: Session, warehouse_id, key: str, text: str, limit=50) -> list:
+    """Values of one filter held in this warehouse that contain `text` — the
+    dropdowns too long to send whole (design), answered as the counter types."""
+    column = PRODUCT_FILTERS.get(key)
+    text = (text or "").strip()
+    if not column or not text:
+        return []
+    col = getattr(models.Product, column)
+    products = scope.products(db, db.query(models.Product), warehouse_id,
+                              include_zero=True)
+    like = "%" + "".join("\\" + ch if ch in "\\%_" else ch for ch in text) + "%"
+    rows = (products.with_entities(col).filter(col.ilike(like, escape="\\"))
+            .distinct().order_by(col).limit(limit))
+    return [v.strip() for (v,) in rows if v and v.strip()]
 
 
 # ---------------------------------------------------------------------------

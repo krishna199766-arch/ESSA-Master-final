@@ -133,6 +133,13 @@ def options(db: Session = Depends(get_db),
     return audit.filter_options(db, _counting_warehouse(db, wid))
 
 
+@router.get("/options/{key}")
+def search_option(key: str, q: str = "", db: Session = Depends(get_db),
+                  wid: Optional[int] = Depends(scope.current)):
+    """Matching values of a filter too long to list whole (design), as typed."""
+    return audit.search_option(db, _counting_warehouse(db, wid), key, q)
+
+
 @router.post("/preview")
 def preview(body: PreviewIn, db: Session = Depends(get_db),
             wid: Optional[int] = Depends(scope.current)):

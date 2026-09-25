@@ -7317,7 +7317,8 @@ const PRODUCT_FILTER_COLUMNS = {
 // mounts a fresh one — and a <select> that is remounted loses focus mid-use. The
 // screen re-renders on every keystroke in the scan box, which is exactly when
 // somebody is least able to afford the rail resetting under them.
-function PsaDropdown({ name, label, value, options, onChange }) {
+function PsaDropdown({ name, label, value, options, onChange, searched }) {
+  if (searched) return <PsaSearchField name={name} label={label} value={value} onChange={onChange} />
   const list = options || []
   return (
     <div className="field">
@@ -7329,6 +7330,32 @@ function PsaDropdown({ name, label, value, options, onChange }) {
         <option value="">{list.length ? 'Any' : '— none recorded —'}</option>
         {list.map((v) => <option key={v} value={v}>{v}</option>)}
       </select>
+    </div>
+  )
+}
+
+// A filter with too many values for a dropdown (design runs to 100,000+ on a
+// full store — a <select> that size freezes the page). Typed instead, with the
+// matching values this warehouse holds offered as suggestions.
+function PsaSearchField({ name, label, value, onChange }) {
+  const [hits, setHits] = useState([])
+  const q = useDebounced((value || '').trim(), 250)
+  useEffect(() => {
+    if (!q) { setHits([]); return }
+    let live = true
+    api.psaSearchOption(name, q).then((r) => { if (live) setHits(Array.isArray(r) ? r : []) })
+      .catch(() => { if (live) setHits([]) })
+    return () => { live = false }
+  }, [name, q])
+  const id = `psa-opt-${name}`
+  return (
+    <div className="field">
+      <label>{label}</label>
+      <input value={value || ''} onChange={onChange} list={id} placeholder="Any — type to search"
+        title={`Narrow to one ${label.toLowerCase()} — type part of it and pick from the list`} />
+      <datalist id={id}>
+        {hits.map((v) => <option key={v} value={v} />)}
+      </datalist>
     </div>
   )
 }
@@ -7683,7 +7710,8 @@ function PhysicalAuditView({ toast, role }) {
               <div className="row" key={i}>
                 {pair.map(([k, label]) => (
                   <PsaDropdown key={k} name={k} label={label} value={filters[k]}
-                    options={options?.[k]} onChange={set(k)} />
+                    options={options?.[k]} onChange={set(k)}
+                    searched={!!options && options[k] === null} />
                 ))}
               </div>
             ))}
