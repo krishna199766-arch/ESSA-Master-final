@@ -60,7 +60,7 @@ def _r2(v):
 # ---------------------------------------------------------------------------
 #  Shared shapes
 # ---------------------------------------------------------------------------
-def _posted(db, date_from=None, date_to=None):
+def _posted(db, date_from=None, date_to=None, lines=True, products=True):
     """Posted GRNs, optionally within an invoice-date range.
 
     Dates are stored ISO (services/dates.py), so this compares chronologically.
@@ -81,11 +81,18 @@ def _posted(db, date_from=None, date_to=None):
     ids = [h.id for h in heads]
     for i in range(0, len(ids), 300):
         batch = ids[i:i + 300]
-        loaded = {p.id: p for p in db.query(P).options(
-            joinedload(P.supplier),
-            selectinload(P.lines).joinedload(PL.product),
-            selectinload(P.lines).selectinload(PL.splits).joinedload(S.product),
-            selectinload(P.lines).selectinload(PL.shortages)).filter(P.id.in_(batch))}
+        # `lines=False` for the reports that read only the receipt's header —
+        # the tax registers — which otherwise paid for every line of every GRN
+        opts = [joinedload(P.supplier)]
+        # `products=False` for a report that never reads the product (HSN)
+        if lines and products:
+            opts += [selectinload(P.lines).joinedload(PL.product),
+                     selectinload(P.lines).selectinload(PL.splits).joinedload(S.product),
+                     selectinload(P.lines).selectinload(PL.shortages)]
+        elif lines:
+            opts += [selectinload(P.lines).selectinload(PL.splits),
+                     selectinload(P.lines).selectinload(PL.shortages)]
+        loaded = {p.id: p for p in db.query(P).options(*opts).filter(P.id.in_(batch))}
         for pid in batch:
             yield loaded[pid]
 
@@ -182,7 +189,7 @@ def _outwards(db, query, keep=None):
         yield from batch
 
 
-def _received_rows(purchase):
+def _received_rows(purchase, with_product=True):
     """What a GRN actually took into stock, as (line, split|None, product, qty, rate).
 
     A broken-down bundle received its variants, not itself — the same rule
@@ -196,7 +203,10 @@ def _received_rows(purchase):
             if qty <= 0:
                 continue
             rate = _f(h.effective_rate if line.is_split else line.rate)
-            out.append((line, h if line.is_split else None, h.product, qty, rate))
+            # the product only when the caller reads it — loading it lazily per
+            # holder, for a report that ignores it, was a query per line
+            out.append((line, h if line.is_split else None,
+                        h.product if with_product else None, qty, rate))
     return out
 
 
@@ -962,16 +972,19 @@ def stock_audit_report(db):
     cols = ["date", "sku", "description", "system_qty", "counted_qty", "difference",
             "value_impact", "note"]
     rows, tdiff, tval = [], 0.0, 0.0
-    for m in db.query(models.StockMovement).filter(
-            models.StockMovement.kind == "adjustment").order_by(
-            models.StockMovement.id).all():
+    SM, P = models.StockMovement, models.Product
+    # the product's two columns joined in — a lazy load per product was most of
+    # the ten minutes this took over every adjustment on a full store
+    for m, pid, sku, description in (db.query(SM, P.id, P.sku, P.description)
+                                       .outerjoin(P, P.id == SM.product_id)
+                                       .filter(SM.kind == "adjustment").order_by(SM.id)):
         delta = _f(m.qty_delta)
         after = _f(m.balance_after)
         impact = round(delta * _f(m.rate), 2)
-        prod = m.product
+        found = pid is not None                  # `prod` in the old per-row lookup
         rows.append({"date": m.created_at.strftime("%Y-%m-%d") if m.created_at else "",
-                     "sku": prod.sku if prod else "",
-                     "description": prod.description if prod else "",
+                     "sku": sku if found else "",
+                     "description": description if found else "",
                      "system_qty": round(after - delta, 3), "counted_qty": round(after, 3),
                      "difference": round(delta, 3), "value_impact": impact,
                      "note": m.note or ""})
@@ -1009,9 +1022,9 @@ def purchase_hsn_report(db, date_from=None, date_to=None):
     cols = ["hsn", "description", "invoices", "items", "qty", "taxable", "tax", "total"]
     agg = defaultdict(lambda: {"desc": "", "invoices": set(), "items": 0,
                                "qty": 0.0, "taxable": 0.0, "tax": 0.0})
-    for p in _posted(db, date_from, date_to):
+    for p in _posted(db, date_from, date_to, products=False):
         rate = (_f(p.tax_total) / _f(p.taxable_total)) if _f(p.taxable_total) else 0.0
-        for line, split, prod, qty, r in _received_rows(p):
+        for line, split, prod, qty, r in _received_rows(p, with_product=False):
             a = agg[line.hsn or "(none)"]
             a["desc"] = a["desc"] or (line.description or "")
             a["invoices"].add(p.id)
@@ -1036,7 +1049,7 @@ def purchase_tax_report(db, date_from=None, date_to=None):
             "igst", "tds", "charges", "round_off", "grand_total"]
     rows = []
     tot = defaultdict(float)
-    for p in _posted(db, date_from, date_to):
+    for p in _posted(db, date_from, date_to, lines=False):
         t = _taxes(p)
         r = {"date": p.invoice_date or "",
              "supplier": p.supplier.name if p.supplier else "",
@@ -1059,7 +1072,7 @@ def purchase_tax_summary(db, date_from=None, date_to=None):
     because they settle against different heads."""
     cols = ["tax_kind", "rate_pct", "invoices", "taxable", "tax_amount"]
     agg = defaultdict(lambda: {"invoices": 0, "taxable": 0.0, "tax": 0.0})
-    for p in _posted(db, date_from, date_to):
+    for p in _posted(db, date_from, date_to, lines=False):
         t = _taxes(p)
         for kind, rk, ak in (("CGST+SGST", "cgst_rate", "cgst_amount"),
                              ("IGST", "igst_rate", "igst_amount")):

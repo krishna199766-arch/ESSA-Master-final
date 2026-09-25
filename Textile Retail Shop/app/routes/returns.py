@@ -260,6 +260,14 @@ def print_note(nid):
 @login_required
 @role_required("admin", "manager")
 def list_notes():
-    notes = CreditNote.query.order_by(CreditNote.id.desc()).limit(200).all()
+    from sqlalchemy.orm import joinedload
+    # each row prints its bill, the bill's customer, and two people — read
+    # with the rows rather than four queries per credit note
+    notes = (CreditNote.query.options(
+                joinedload(CreditNote.invoice).joinedload(Invoice.customer),
+                joinedload(CreditNote.invoice).joinedload(Invoice.staff),
+                joinedload(CreditNote.invoice).joinedload(Invoice.cashier),
+                joinedload(CreditNote.staff))
+             .order_by(CreditNote.id.desc()).limit(200).all())
     total = sum(n.total for n in notes)
     return render_template("returns/list.html", notes=notes, total=total)

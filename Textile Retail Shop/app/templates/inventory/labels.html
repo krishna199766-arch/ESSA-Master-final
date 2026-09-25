@@ -19,6 +19,9 @@
     <a href="{{ url_for('inventory.list_products') }}" class="btn btn-outline-secondary btn-sm">Back</a>
   </div>
 </div>
+{% if capped %}
+<div class="text-muted small mb-2 d-print-none">The first {{ products|length }} of {{ '{:,}'.format(total) }} products — open this sheet with a category to print a particular range.</div>
+{% endif %}
 
 <div class="label-sheet">
   {% for p in products %}

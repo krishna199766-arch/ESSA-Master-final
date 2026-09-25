@@ -266,10 +266,21 @@ def report(key):
 @login_required
 @role_required("admin", "manager")
 def low_stock():
-    items = Product.query.filter(
+    query = Product.query.filter(
         Product.stock_qty <= Product.reorder_level, Product.active == True
-    ).order_by(Product.stock_qty).all()
-    return render_template("reports/low_stock.html", items=items)
+    )
+    # Capped, emptiest first. With no reorder levels set, every product at zero
+    # qualifies — most of a 400k catalogue — and the page never came back.
+    total = query.count()
+    from sqlalchemy.orm import joinedload
+    items = (query.options(joinedload(Product.category))           # printed per row
+             .order_by(Product.stock_qty, Product.id).limit(LOW_STOCK_SHOWN).all())
+    return render_template("reports/low_stock.html", items=items, total=total,
+                           capped=total > len(items))
+
+
+#: Rows the low-stock page draws; the total is always shown.
+LOW_STOCK_SHOWN = 500
 
 
 # ---------- Ask a question ----------

@@ -305,7 +305,10 @@ def sync_warehouse():
 @login_required
 @role_required("admin", "manager")
 def movements():
-    moves = StockMovement.query.order_by(StockMovement.created_at.desc()).limit(200).all()
+    from sqlalchemy.orm import joinedload
+    # each row names its product — read with the rows, not one query per row
+    moves = (StockMovement.query.options(joinedload(StockMovement.product))
+             .order_by(StockMovement.created_at.desc()).limit(200).all())
     return render_template("inventory/movements.html", movements=moves)
 
 
@@ -350,5 +353,11 @@ def labels_sheet():
     query = Product.query.filter_by(active=True)
     if cat_id:
         query = query.filter_by(category_id=cat_id)
-    products = query.order_by(Product.name).all()
-    return render_template("inventory/labels.html", products=products, single=None)
+    # Capped like the product list: a sheet of every active product's QR is the
+    # whole catalogue on a full store — it never rendered, and held a server
+    # thread while it tried. Pick a category to print a particular range.
+    cap = PRODUCTS_SEARCHED if cat_id else PRODUCTS_LISTED
+    total = query.count()
+    products = query.order_by(Product.name, Product.id).limit(cap).all()
+    return render_template("inventory/labels.html", products=products, single=None,
+                           total=total, capped=total > len(products))
